@@ -4,12 +4,12 @@ This file contains several Unicode characters and emoji for testing font support
 
 ## Emoji (direct characters)
 
-- Rocket: ??
-- Key: ??
-- Test tube: ??
-- Check mark: ?
-- Cross mark: ?
-- Smiley: ??
+- Rocket: 🚀
+- Key: 🔑
+- Test tube: 🧪
+- Check mark: ✅
+- Cross mark: ❌
+- Smiley: 😀
 
 ## Emoji (GitHub shortcodes)
 
@@ -23,14 +23,14 @@ This file contains several Unicode characters and emoji for testing font support
 
 ## Box-drawing and symbols
 
-- Box drawing: ?????
-                   ? ? ?
-                   ?????
+- Box drawing: ┌─┬─┐
+                   │ │ │
+                   └─┴─┘
 
-- Arrows: ? ? ? ? ? ?
-- Math symbols: � � � ? ? ? ?
-- Currency: $, �, �, �, ?
-- Misc symbols: � � � � � �
+- Arrows: → ← ↑ ↓ ↔ ↕
+- Math symbols: ± × ÷ ≈ ≠ ≤ ≥
+- Currency: $, €, £, ¥, ₹
+- Misc symbols: © ® ™ § ¶ •
 
 ## ASCII alternatives
 
