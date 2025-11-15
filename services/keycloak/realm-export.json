@@ -1,0 +1,222 @@
+{
+  "realm": "api-gateway-poc",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "accessCodeLifespan": 60,
+  "accessCodeLifespanUserAction": 300,
+  "clients": [
+    {
+      "clientId": "api-gateway",
+      "name": "API Gateway Client",
+      "enabled": true,
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "protocol": "openid-connect",
+      "secret": "gateway-secret-change-in-production",
+      "redirectUris": [
+        "http://localhost:8080/*",
+        "http://localhost:8080/callback",
+        "http://127.0.0.1:8080/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080"
+      ],
+      "attributes": {
+        "access.token.lifespan": "300",
+        "client.secret.creation.time": "1640000000"
+      }
+    },
+    {
+      "clientId": "customer-service",
+      "name": "Customer Service Client",
+      "enabled": true,
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "bearerOnly": true,
+      "protocol": "openid-connect",
+      "secret": "customer-service-secret-change-in-production",
+      "attributes": {
+        "client.secret.creation.time": "1640000000"
+      }
+    },
+    {
+      "clientId": "product-service",
+      "name": "Product Service Client",
+      "enabled": true,
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "bearerOnly": true,
+      "protocol": "openid-connect",
+      "secret": "product-service-secret-change-in-production",
+      "attributes": {
+        "client.secret.creation.time": "1640000000"
+      }
+    },
+    {
+      "clientId": "test-client",
+      "name": "Test Client for Development",
+      "description": "WARNING: Public client for development only - DISABLE IN PRODUCTION",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://localhost:*",
+        "http://127.0.0.1:*"
+      ],
+      "webOrigins": [
+        "http://localhost:*",
+        "http://127.0.0.1:*"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "testuser-unvrfd",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "test.user-unvrfd@example.com",
+      "firstName": "Test",
+      "lastName": "User-unvrfd",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "testpass",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "testuser-vrfd",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "test.user-vrfd@example.com",
+      "firstName": "Test",
+      "lastName": "User-vrfd",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "testpass",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "testuser",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "test.user@example.com",
+      "firstName": "Test",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "testpass",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "testuser-cm",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "test.user-cm@example.com",
+      "firstName": "Test",
+      "lastName": "User-cm",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "testpass",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "testuser-pm",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "test.user-pm@example.com",
+      "firstName": "Test",
+      "lastName": "User-pm",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "testpass",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "testuser-pcm",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "test.user-pcm@example.com",
+      "firstName": "Test",
+      "lastName": "User-pcm",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "testpass",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "adminuser",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "admin.user@example.com",
+      "firstName": "Admin",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "adminpass",
+          "temporary": false
+        }
+      ]
+    }
+  ],
+  "groups": [],
+  "requiredCredentials": ["password"],
+  "scopeMappings": [],
+  "clientScopeMappings": {},
+  "internationalizationEnabled": false,
+  "supportedLocales": [],
+  "authenticationFlows": [],
+  "authenticatorConfig": [],
+  "requiredActions": [],
+  "browserFlow": "browser",
+  "registrationFlow": "registration",
+  "directGrantFlow": "direct grant",
+  "resetCredentialsFlow": "reset credentials",
+  "clientAuthenticationFlow": "clients",
+  "dockerAuthenticationFlow": "docker auth",
+  "attributes": {
+    "failureFactor": "5",
+    "waitIncrementSeconds": "60",
+    "maxFailureWaitSeconds": "900",
+    "maxDeltaTimeSeconds": "43200",
+    "minimumQuickLoginWaitSeconds": "60"
+  },
+  "keycloakVersion": "23.0.0"
+}

@@ -1,0 +1,18 @@
+# Ensure shell scripts always use LF line endings (Unix-style)
+*.sh text eol=lf
+
+# Ensure Python files use LF
+*.py text eol=lf
+
+# Ensure YAML files use LF
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Dockerfile should use LF
+Dockerfile text eol=lf
+
+# Markdown files
+*.md text eol=lf
+
+# Let Git handle other text files automatically
+* text=auto
