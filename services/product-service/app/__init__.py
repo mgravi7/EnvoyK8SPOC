@@ -1,1 +1,1 @@
-# Product Service Application Package
+# Product models package

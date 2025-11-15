@@ -5,7 +5,7 @@ Handles all data operations for products (currently mock data, future: database)
 from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
-from product_model import Product
+from models.product import Product
 
 
 class ProductDataAccess:

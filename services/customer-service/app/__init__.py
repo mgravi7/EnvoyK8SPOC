@@ -1,1 +1,1 @@
-# Customer Service Application Package
+# Customer models package
