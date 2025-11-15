@@ -12,7 +12,7 @@
 
 ## Current State Assessment
 
-? **Phase 1 COMPLETE - Working in Docker Compose:**
+[COMPLETE] **Phase 1 COMPLETE - Working in Docker Compose:**
 - **Services:** customer-service, product-service, authz-service (with Redis caching)
 - **Gateway:** Envoy Proxy with ext_authz filter and JWT validation
 - **IAM:** Keycloak with pre-configured realm, clients, roles, and test users
@@ -27,7 +27,7 @@
 
 ## Objectives
 
-1. ? **Phase 1 (Complete):** Working microservices with Envoy, Keycloak, and RBAC in Docker Compose
+1. [COMPLETE] **Phase 1 (Complete):** Working microservices with Envoy, Keycloak, and RBAC in Docker Compose
 2. **Phase 2 (Current):** Migrate to Kubernetes (Docker Desktop) with direct Envoy deployment
 3. **Phase 3 (Next):** Convert to Kubernetes Gateway API with Envoy Gateway
 4. **Phase 4 (Future):** Advanced Kubernetes-native features (optional)
@@ -36,44 +36,44 @@
 
 ## Architecture Evolution
 
-### Phase 1: Docker Compose (? Complete)
+### Phase 1: Docker Compose [COMPLETE]
 ```
 Docker Network (microservices-network)
-?
-?? Keycloak (IAM) :8180
-?? Redis (Cache) - internal only
-?? authz-service - internal only (ext_authz + role lookup)
-?? Envoy Gateway :8080, :9901
-?   ?? JWT validation
-?   ?? ext_authz filter ? authz-service
-?   ?? Routes to services
-?? customer-service :8001
-?? product-service :8002
+|
++-- Keycloak (IAM) :8180
++-- Redis (Cache) - internal only
++-- authz-service - internal only (ext_authz + role lookup)
++-- Envoy Gateway :8080, :9901
+|   +-- JWT validation
+|   +-- ext_authz filter -> authz-service
+|   +-- Routes to services
++-- customer-service :8001
++-- product-service :8002
 ```
 
 ### Phase 2: Kubernetes with Direct Envoy (Target)
 ```
 Namespace: api-gateway-poc
-?
-?? Keycloak (Deployment + Service)
-?? Redis (Deployment + Service + PVC)
-?? authz-service (Deployment + Service)
-?? Envoy (Deployment + LoadBalancer/NodePort)
-?   ?? ConfigMap with envoy.yaml
-?? customer-service (Deployment + Service)
-?? product-service (Deployment + Service)
+|
++-- Keycloak (Deployment + Service)
++-- Redis (Deployment + Service + PVC)
++-- authz-service (Deployment + Service)
++-- Envoy (Deployment + LoadBalancer/NodePort)
+|   +-- ConfigMap with envoy.yaml
++-- customer-service (Deployment + Service)
++-- product-service (Deployment + Service)
 ```
 
 ### Phase 3: Kubernetes Gateway API (Future)
 ```
 Namespace: api-gateway-poc
-?
-?? Envoy Gateway Operator (envoy-gateway-system)
-?? GatewayClass + Gateway
-?? HTTPRoutes (customer, product, auth)
-?? SecurityPolicies (JWT, ext_authz)
-?? Services (same as Phase 2)
-?? Deployments (same as Phase 2)
+|
++-- Envoy Gateway Operator (envoy-gateway-system)
++-- GatewayClass + Gateway
++-- HTTPRoutes (customer, product, auth)
++-- SecurityPolicies (JWT, ext_authz)
++-- Services (same as Phase 2)
++-- Deployments (same as Phase 2)
 ```
 
 ---
@@ -98,149 +98,149 @@ Namespace: api-gateway-poc
 
 ```
 EnvoyK8SPOC/
-??? README.md
-??? project-plan.md                       # This file
-??? .gitignore
-??? .copilot-instructions.md
-??? docker-compose.yml                    # ? Working - Phase 1 reference
-?
-??? services/                             # ? COMPLETE - All services working
-?   ??? customer-service/
-?   ?   ??? app/
-?   ?   ?   ??? __init__.py
-?   ?   ?   ??? main.py
-?   ?   ?   ??? customer.py
-?   ?   ?   ??? customer_data_access.py
-?   ?   ??? Dockerfile                    # ? Working
-?   ?   ??? requirements.txt
-?   ?   ??? .dockerignore
-?   ?   ??? start.sh
-?   ?
-?   ??? product-service/
-?   ?   ??? app/
-?   ?   ?   ??? __init__.py
-?   ?   ?   ??? main.py
-?   ?   ?   ??? product.py
-?   ?   ?   ??? product_data_access.py
-?   ?   ??? Dockerfile                    # ? Working
-?   ?   ??? requirements.txt
-?   ?   ??? .dockerignore
-?   ?   ??? start.sh
-?   ?
-?   ??? authz-service/
-?   ?   ??? main.py
-?   ?   ??? authz_data_access.py
-?   ?   ??? redis_cache.py
-?   ?   ??? Dockerfile                    # ? Working
-?   ?   ??? requirements.txt
-?   ?   ??? start.sh
-?   ?   ??? README.md                     # ? Comprehensive documentation
-?   ?
-?   ??? keycloak/
-?   ?   ??? Dockerfile                    # ? Working
-?   ?   ??? realm-export.json             # ? Pre-configured realm with test users
-?   ?   ??? README.md                     # ? Comprehensive documentation
-?   ?
-?   ??? gateway/
-?   ?   ??? Dockerfile                    # ? Working (Phase 2)
-?   ?   ??? envoy.yaml                    # ? Working (Phase 2, replaced in Phase 3)
-?   ?
-?   ??? shared/
-?       ??? __init__.py
-?       ??? auth.py                       # ? JWT utilities
-?       ??? common.py                     # ? Common utilities
-?
-??? tests/                                # ? COMPLETE - 90 tests passing
-?   ??? unit/
-?   ?   ??? __init__.py
-?   ?   ??? conftest.py
-?   ?   ??? requirements.txt
-?   ?   ??? test_customer_service.py
-?   ?   ??? test_product_service.py
-?   ?
-?   ??? integration/
-?       ??? __init__.py
-?       ??? test_api_gateway.py
-?       ??? test_external_authz.py
-?
-??? kubernetes/                           # ?? TO CREATE - Phase 2
-?   ??? 00-namespace/
-?   ?   ??? namespace.yaml
-?   ?
-?   ??? 01-config/
-?   ?   ??? configmap-authz.yaml
-?   ?   ??? configmap-customer.yaml
-?   ?   ??? configmap-product.yaml
-?   ?   ??? secret-keycloak.yaml
-?   ?   ??? secret-client-credentials.yaml
-?   ?
-?   ??? 02-storage/
-?   ?   ??? redis-pvc.yaml
-?   ?
-?   ??? 03-data/
-?   ?   ??? redis-deployment.yaml
-?   ?   ??? redis-service.yaml
-?   ?
-?   ??? 04-iam/
-?   ?   ??? keycloak-deployment.yaml
-?   ?   ??? keycloak-service.yaml
-?   ?
-?   ??? 05-authz/
-?   ?   ??? authz-deployment.yaml
-?   ?   ??? authz-service.yaml
-?   ?
-?   ??? 06-services/
-?   ?   ??? customer-deployment.yaml
-?   ?   ??? customer-service.yaml
-?   ?   ??? product-deployment.yaml
-?   ?   ??? product-service.yaml
-?   ?
-?   ??? 07-envoy-gateway/                # Phase 2 - Direct Envoy
-?   ?   ??? envoy-configmap.yaml
-?   ?   ??? envoy-deployment.yaml
-?   ?   ??? envoy-service.yaml
-?   ?
-?   ??? 08-gateway-api/                  # Phase 3 - Gateway API (Future)
-?       ??? gatewayclass.yaml
-?       ??? gateway.yaml
-?       ??? httproute-customer.yaml
-?       ??? httproute-product.yaml
-?       ??? httproute-auth.yaml
-?       ??? securitypolicy-jwt.yaml
-?       ??? securitypolicy-authz.yaml
-?
-??? scripts/                              # ?? TO CREATE - Phase 2
-?   ??? README.md
-?   ?
-?   ??? bash/                             # Linux/Mac/WSL
-?   ?   ??? build-images.sh
-?   ?   ??? deploy-k8s-phase2.sh
-?   ?   ??? deploy-k8s-phase3.sh
-?   ?   ??? cleanup-k8s.sh
-?   ?   ??? test-endpoints.sh
-?   ?   ??? verify-deployment.sh
-?   ?
-?   ??? powershell/                       # Windows
-?       ??? build-images.ps1
-?       ??? deploy-k8s-phase2.ps1
-?       ??? deploy-k8s-phase3.ps1
-?       ??? cleanup-k8s.ps1
-?       ??? test-endpoints.ps1
-?       ??? verify-deployment.ps1
-?
-??? docs/                                 # ?? Essential docs only
-    ??? kubernetes-deployment.md          # Phase 2 deployment guide
-    ??? gateway-api-migration.md          # Phase 3 migration guide
-    ??? troubleshooting.md                # Common issues and solutions
++-- README.md
++-- project-plan.md                       # This file
++-- .gitignore
++-- .copilot-instructions.md
++-- docker-compose.yml                    # [WORKING] Phase 1 reference
+|
++-- services/                             # [COMPLETE] All services working
+|   +-- customer-service/
+|   |   +-- app/
+|   |   |   +-- __init__.py
+|   |   |   +-- main.py
+|   |   |   +-- customer.py
+|   |   |   +-- customer_data_access.py
+|   |   +-- Dockerfile                    # [WORKING]
+|   |   +-- requirements.txt
+|   |   +-- .dockerignore
+|   |   +-- start.sh
+|   |
+|   +-- product-service/
+|   |   +-- app/
+|   |   |   +-- __init__.py
+|   |   |   +-- main.py
+|   |   |   +-- product.py
+|   |   |   +-- product_data_access.py
+|   |   +-- Dockerfile                    # [WORKING]
+|   |   +-- requirements.txt
+|   |   +-- .dockerignore
+|   |   +-- start.sh
+|   |
+|   +-- authz-service/
+|   |   +-- main.py
+|   |   +-- authz_data_access.py
+|   |   +-- redis_cache.py
+|   |   +-- Dockerfile                    # [WORKING]
+|   |   +-- requirements.txt
+|   |   +-- start.sh
+|   |   +-- README.md                     # [COMPLETE] Comprehensive documentation
+|   |
+|   +-- keycloak/
+|   |   +-- Dockerfile                    # [WORKING]
+|   |   +-- realm-export.json             # [COMPLETE] Pre-configured realm with test users
+|   |   +-- README.md                     # [COMPLETE] Comprehensive documentation
+|   |
+|   +-- gateway/
+|   |   +-- Dockerfile                    # [WORKING] Phase 2
+|   |   +-- envoy.yaml                    # [WORKING] Phase 2, replaced in Phase 3
+|   |
+|   +-- shared/
+|       +-- __init__.py
+|       +-- auth.py                       # [COMPLETE] JWT utilities
+|       +-- common.py                     # [COMPLETE] Common utilities
+|
++-- tests/                                # [COMPLETE] 90 tests passing
+|   +-- unit/
+|   |   +-- __init__.py
+|   |   +-- conftest.py
+|   |   +-- requirements.txt
+|   |   +-- test_customer_service.py
+|   |   +-- test_product_service.py
+|   |
+|   +-- integration/
+|       +-- __init__.py
+|       +-- test_api_gateway.py
+|       +-- test_external_authz.py
+|
++-- kubernetes/                           # [TO CREATE] Phase 2
+|   +-- 00-namespace/
+|   |   +-- namespace.yaml
+|   |
+|   +-- 01-config/
+|   |   +-- configmap-authz.yaml
+|   |   +-- configmap-customer.yaml
+|   |   +-- configmap-product.yaml
+|   |   +-- secret-keycloak.yaml
+|   |   +-- secret-client-credentials.yaml
+|   |
+|   +-- 02-storage/
+|   |   +-- redis-pvc.yaml
+|   |
+|   +-- 03-data/
+|   |   +-- redis-deployment.yaml
+|   |   +-- redis-service.yaml
+|   |
+|   +-- 04-iam/
+|   |   +-- keycloak-deployment.yaml
+|   |   +-- keycloak-service.yaml
+|   |
+|   +-- 05-authz/
+|   |   +-- authz-deployment.yaml
+|   |   +-- authz-service.yaml
+|   |
+|   +-- 06-services/
+|   |   +-- customer-deployment.yaml
+|   |   +-- customer-service.yaml
+|   |   +-- product-deployment.yaml
+|   |   +-- product-service.yaml
+|   |
+|   +-- 07-envoy-gateway/                # Phase 2 - Direct Envoy
+|   |   +-- envoy-configmap.yaml
+|   |   +-- envoy-deployment.yaml
+|   |   +-- envoy-service.yaml
+|   |
+|   +-- 08-gateway-api/                  # Phase 3 - Gateway API (Future)
+|       +-- gatewayclass.yaml
+|       +-- gateway.yaml
+|       +-- httproute-customer.yaml
+|       +-- httproute-product.yaml
+|       +-- httproute-auth.yaml
+|       +-- securitypolicy-jwt.yaml
+|       +-- securitypolicy-authz.yaml
+|
++-- scripts/                              # [TO CREATE] Phase 2
+|   +-- README.md
+|   |
+|   +-- bash/                             # Linux/Mac/WSL
+|   |   +-- build-images.sh
+|   |   +-- deploy-k8s-phase2.sh
+|   |   +-- deploy-k8s-phase3.sh
+|   |   +-- cleanup-k8s.sh
+|   |   +-- test-endpoints.sh
+|   |   +-- verify-deployment.sh
+|   |
+|   +-- powershell/                       # Windows
+|       +-- build-images.ps1
+|       +-- deploy-k8s-phase2.ps1
+|       +-- deploy-k8s-phase3.ps1
+|       +-- cleanup-k8s.ps1
+|       +-- test-endpoints.ps1
+|       +-- verify-deployment.ps1
+|
++-- docs/                                 # Essential docs only
+    +-- kubernetes-deployment.md          # Phase 2 deployment guide
+    +-- gateway-api-migration.md          # Phase 3 migration guide
+    +-- troubleshooting.md                # Common issues and solutions
 ```
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Docker Compose POC ? COMPLETE
+### Phase 1: Docker Compose POC [COMPLETE]
 
-**Status:** ? All services working, 90 tests passing
+**Status:** [COMPLETE] All services working, 90 tests passing
 
 **Completed:**
 - [x] Customer service with RBAC
@@ -254,7 +254,7 @@ EnvoyK8SPOC/
 
 ---
 
-### Phase 2: Kubernetes Migration (Direct Envoy) ?? CURRENT
+### Phase 2: Kubernetes Migration (Direct Envoy) [CURRENT]
 
 **Goal:** Deploy existing Docker Compose setup to Kubernetes with minimal changes
 
@@ -331,19 +331,19 @@ EnvoyK8SPOC/
   - [ ] Network troubleshooting
 
 **Success Criteria:**
-- [x] All services running in Kubernetes namespace `api-gateway-poc`
-- [x] All pods in `Running` state
-- [x] Services accessible through Envoy gateway
-- [x] Redis caching working (verify in logs)
-- [x] Keycloak authentication working
-- [x] JWT validation working
-- [x] External authz (RBAC) working
-- [x] All 90 tests passing against Kubernetes deployment
-- [x] Both bash and PowerShell scripts working
+- [ ] All services running in Kubernetes namespace `api-gateway-poc`
+- [ ] All pods in `Running` state
+- [ ] Services accessible through Envoy gateway
+- [ ] Redis caching working (verify in logs)
+- [ ] Keycloak authentication working
+- [ ] JWT validation working
+- [ ] External authz (RBAC) working
+- [ ] All 90 tests passing against Kubernetes deployment
+- [ ] Both bash and PowerShell scripts working
 
 ---
 
-### Phase 3: Kubernetes Gateway API Migration ?? FUTURE
+### Phase 3: Kubernetes Gateway API Migration [FUTURE]
 
 **Goal:** Replace direct Envoy deployment with Kubernetes Gateway API + Envoy Gateway
 
@@ -396,17 +396,17 @@ EnvoyK8SPOC/
 - [ ] Update troubleshooting guide
 
 **Success Criteria:**
-- [x] Envoy Gateway managing all traffic routing
-- [x] Gateway API resources (Gateway, HTTPRoute, SecurityPolicy) working
-- [x] JWT validation via SecurityPolicy
-- [x] External authz working via SecurityPolicy
-- [x] All 90 tests passing
-- [x] No direct Envoy Deployment (all via Gateway API CRDs)
-- [x] Can update routes without pod restarts
+- [ ] Envoy Gateway managing all traffic routing
+- [ ] Gateway API resources (Gateway, HTTPRoute, SecurityPolicy) working
+- [ ] JWT validation via SecurityPolicy
+- [ ] External authz working via SecurityPolicy
+- [ ] All 90 tests passing
+- [ ] No direct Envoy Deployment (all via Gateway API CRDs)
+- [ ] Can update routes without pod restarts
 
 ---
 
-### Phase 4: Advanced Features ?? FUTURE (Optional)
+### Phase 4: Advanced Features [FUTURE] (Optional)
 
 **Goal:** Add advanced Kubernetes-native features
 
@@ -503,7 +503,7 @@ git push origin feature/k8s-basic
 ### Enabling Kubernetes in Docker Desktop
 
 1. Open Docker Desktop
-2. Settings ? Kubernetes
+2. Settings -> Kubernetes
 3. Check "Enable Kubernetes"
 4. Click "Apply & Restart"
 5. Wait for Kubernetes to start (green indicator)
@@ -556,7 +556,7 @@ pip --version
 
 ## Success Metrics
 
-### Phase 1 ? COMPLETE
+### Phase 1 [COMPLETE]
 - [x] All services running in Docker Compose
 - [x] Envoy gateway routing working
 - [x] JWT validation working
@@ -632,8 +632,8 @@ pip --version
 ### Docker Desktop Kubernetes Issues
 
 **Kubernetes not starting:**
-- Increase Docker Desktop memory (Settings ? Resources ? Memory: 4GB+)
-- Reset Kubernetes cluster (Settings ? Kubernetes ? Reset)
+- Increase Docker Desktop memory (Settings -> Resources -> Memory: 4GB+)
+- Reset Kubernetes cluster (Settings -> Kubernetes -> Reset)
 - Restart Docker Desktop
 
 **Images not found in Kubernetes:**
