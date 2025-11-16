@@ -1,0 +1,16 @@
+---
+# PersistentVolumeClaim for Redis data
+# Uses default storage class (Docker Desktop local storage)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+  namespace: api-gateway-poc
+  labels:
+    app: redis
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

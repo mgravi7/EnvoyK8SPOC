@@ -1,0 +1,11 @@
+---
+# Namespace for all EnvoyK8SPOC resources
+# Matches Keycloak realm name for consistency
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: api-gateway-poc
+  labels:
+    name: api-gateway-poc
+    project: envoy-k8s-poc
+    phase: phase2

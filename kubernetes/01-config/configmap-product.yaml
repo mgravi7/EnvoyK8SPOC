@@ -1,0 +1,12 @@
+---
+# Product service environment configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: product-config
+  namespace: api-gateway-poc
+  labels:
+    app: product-service
+data:
+  SERVICE_NAME: "product-service"
+  SERVICE_PORT: "8000"

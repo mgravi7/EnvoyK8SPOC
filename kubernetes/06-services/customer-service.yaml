@@ -1,0 +1,18 @@
+---
+# Customer service ClusterIP service (internal only)
+apiVersion: v1
+kind: Service
+metadata:
+  name: customer-service
+  namespace: api-gateway-poc
+  labels:
+    app: customer-service
+spec:
+  type: ClusterIP
+  selector:
+    app: customer-service
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+    protocol: TCP

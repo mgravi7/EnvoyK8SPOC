@@ -1,0 +1,19 @@
+---
+# Keycloak LoadBalancer service (external access)
+# Docker Desktop will expose this on localhost:8180
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: api-gateway-poc
+  labels:
+    app: keycloak
+spec:
+  type: LoadBalancer
+  selector:
+    app: keycloak
+  ports:
+  - name: http
+    port: 8180
+    targetPort: 8080
+    protocol: TCP

@@ -1,0 +1,210 @@
+---
+# Envoy configuration as ConfigMap
+# NOTE: Service endpoints are updated for Kubernetes DNS
+# - keycloak -> keycloak:8080 (ClusterIP service in same namespace)
+# - authz-service -> authz-service:9000
+# - customer-service -> customer-service:8000
+# - product-service -> product-service:8000
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: envoy-config
+  namespace: api-gateway-poc
+  labels:
+    app: envoy
+data:
+  envoy.yaml: |
+    admin:
+      address:
+        socket_address:
+          protocol: TCP
+          address: 0.0.0.0
+          port_value: 9901
+
+    static_resources:
+      listeners:
+      - name: listener_0
+        address:
+          socket_address:
+            protocol: TCP
+            address: 0.0.0.0
+            port_value: 8080
+        filter_chains:
+        - filters:
+          - name: envoy.filters.network.http_connection_manager
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+              stat_prefix: ingress_http
+              access_log:
+              - name: envoy.access_loggers.stdout
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+              http_filters:
+              # JWT Authentication Filter
+              - name: envoy.filters.http.jwt_authn
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+                  providers:
+                    keycloak_provider:
+                      issuer: http://localhost:8180/realms/api-gateway-poc
+                      remote_jwks:
+                        http_uri:
+                          uri: http://keycloak:8080/realms/api-gateway-poc/protocol/openid-connect/certs
+                          cluster: keycloak_cluster
+                          timeout: 5s
+                        cache_duration:
+                          seconds: 300
+                      forward: true
+                      from_headers:
+                      - name: Authorization
+                        value_prefix: "Bearer "
+                      payload_in_metadata: verified_jwt
+                  rules:
+                  # Require JWT for customer service routes
+                  - match:
+                      prefix: /customers
+                    requires:
+                      provider_name: keycloak_provider
+                  # Require JWT for /auth/me endpoint
+                  - match:
+                      prefix: /auth/me
+                    requires:
+                      provider_name: keycloak_provider
+              
+              # External Authorization Filter - Role Lookup
+              - name: envoy.filters.http.ext_authz
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                  http_service:
+                    server_uri:
+                      uri: http://authz-service:9000
+                      cluster: authz_service_cluster
+                      timeout: 1s
+                    path_prefix: /authz/roles
+                    authorization_request:
+                      allowed_headers:
+                        patterns:
+                        - exact: authorization
+                        - exact: x-request-id
+                        - exact: ":path"
+                    authorization_response:
+                      allowed_upstream_headers:
+                        patterns:
+                        - exact: x-user-email
+                        - exact: x-user-roles
+                  failure_mode_allow: false
+              
+              # Router filter (must be last)
+              - name: envoy.filters.http.router
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+              route_config:
+                name: local_route
+                virtual_hosts:
+                - name: local_service
+                  domains: ["*"]
+                  routes:
+                  # User info endpoint for React UI
+                  - match:
+                      prefix: "/auth/me"
+                    route:
+                      cluster: authz_service_cluster
+                      prefix_rewrite: "/authz/me"
+                  # Customer service routes
+                  - match:
+                      prefix: "/customers"
+                    route:
+                      cluster: customer_service
+                  # Product service routes
+                  - match:
+                      prefix: "/products"
+                    route:
+                      cluster: product_service
+                  # Keycloak routes
+                  - match:
+                      prefix: "/auth"
+                    route:
+                      prefix_rewrite: "/"
+                      cluster: keycloak_cluster
+                      
+      clusters:
+      - name: keycloak_cluster
+        connect_timeout: 30s
+        type: LOGICAL_DNS
+        dns_lookup_family: V4_ONLY
+        lb_policy: ROUND_ROBIN
+        load_assignment:
+          cluster_name: keycloak_cluster
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: keycloak
+                    port_value: 8080
+
+      - name: authz_service_cluster
+        connect_timeout: 1s
+        type: LOGICAL_DNS
+        dns_lookup_family: V4_ONLY
+        lb_policy: ROUND_ROBIN
+        load_assignment:
+          cluster_name: authz_service_cluster
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: authz-service
+                    port_value: 9000
+        health_checks:
+        - timeout: 1s
+          interval: 15s
+          unhealthy_threshold: 2
+          healthy_threshold: 2
+          http_health_check:
+            path: /authz/health
+
+      - name: customer_service
+        connect_timeout: 30s
+        type: LOGICAL_DNS
+        dns_lookup_family: V4_ONLY
+        lb_policy: ROUND_ROBIN
+        load_assignment:
+          cluster_name: customer_service
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: customer-service
+                    port_value: 8000
+        health_checks:
+        - timeout: 1s
+          interval: 30s
+          unhealthy_threshold: 2
+          healthy_threshold: 2
+          http_health_check:
+            path: /customers/health
+
+      - name: product_service
+        connect_timeout: 30s
+        type: LOGICAL_DNS
+        dns_lookup_family: V4_ONLY
+        lb_policy: ROUND_ROBIN
+        load_assignment:
+          cluster_name: product_service
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: product-service
+                    port_value: 8000
+        health_checks:
+        - timeout: 1s
+          interval: 30s
+          unhealthy_threshold: 2
+          healthy_threshold: 2
+          http_health_check:
+            path: /products/health
