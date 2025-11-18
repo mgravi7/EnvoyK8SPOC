@@ -5,6 +5,16 @@
 # - authz-service -> authz-service:9000
 # - customer-service -> customer-service:8000
 # - product-service -> product-service:8000
+#
+# IMPORTANT: The clusters below include Envoy-level `health_checks`.
+# These are intentional: Envoy performs active upstream health probing
+# so it can mark individual upstream endpoints healthy/unhealthy and
+# avoid routing to degraded backends independently of Kubernetes
+# Service readiness state. Do NOT remove these checks unless you
+# intentionally rely solely on Kubernetes endpoint readiness or you
+# migrate to an xDS/EDS control plane that provides endpoint health
+# information to Envoy. You may tune the probe intervals/timeouts to
+# reduce probe frequency if desired.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -142,6 +152,13 @@ data:
                   socket_address:
                     address: keycloak
                     port_value: 8080
+        health_checks:
+        - timeout: 5s
+          interval: 30s
+          unhealthy_threshold: 2
+          healthy_threshold: 2
+          http_health_check:
+            path: /health/ready
 
       - name: authz_service_cluster
         connect_timeout: 1s
