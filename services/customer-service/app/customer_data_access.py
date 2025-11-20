@@ -4,7 +4,7 @@ Handles all data operations for customers (currently mock data, future: database
 """
 from typing import List, Optional
 from datetime import datetime
-from models.customer import Customer
+from customer import Customer
 
 
 class CustomerDataAccess:

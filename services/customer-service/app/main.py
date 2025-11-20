@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from customer import CustomerResponse
 from shared.common import setup_logging, create_health_response
-from shared.auth import get_current_user_from_headers, JWTPayload
+from shared.auth import get_current_user, UserInfo
 from customer_data_access import customer_data_access
 
 # Setup logging
@@ -27,7 +27,7 @@ def health_check():
     return create_health_response("customer-service")
 
 @app.get("/customers", response_model=List[CustomerResponse])
-def get_customers(current_user: JWTPayload = Depends(get_current_user_from_headers)):
+def get_customers(current_user: UserInfo = Depends(get_current_user)):
     """
     Get customers based on user authorization
     
@@ -63,7 +63,7 @@ def get_customers(current_user: JWTPayload = Depends(get_current_user_from_heade
     return user_customers
 
 @app.get("/customers/{customer_id}", response_model=CustomerResponse)
-def get_customer(customer_id: int, current_user: JWTPayload = Depends(get_current_user_from_headers)):
+def get_customer(customer_id: int, current_user: UserInfo = Depends(get_current_user)):
     """
     Get a specific customer by ID
     
