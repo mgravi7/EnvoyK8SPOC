@@ -51,8 +51,8 @@ Write-Host "================================" -ForegroundColor Cyan
 # Test Envoy admin
 Test-Endpoint -Url "http://localhost:9901/ready" -Description "Envoy Admin - Ready"
 
-# Test Keycloak health
-Test-Endpoint -Url "http://localhost:8180/health/ready" -Description "Keycloak Health"
+# Test Keycloak health (management port 9000)
+Test-Endpoint -Url "http://localhost:9000/health/ready" -Description "Keycloak Health (Management Port)"
 
 Write-Host ""
 Write-Host "================================" -ForegroundColor Cyan

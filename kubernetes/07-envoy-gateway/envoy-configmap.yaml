@@ -1,7 +1,7 @@
 ---
 # Envoy configuration as ConfigMap
 # NOTE: Service endpoints are updated for Kubernetes DNS
-# - keycloak -> keycloak:8080 (ClusterIP service in same namespace)
+# - keycloak -> keycloak:8180 (Service port, not container port)
 # - authz-service -> authz-service:9000
 # - customer-service -> customer-service:8000
 # - product-service -> product-service:8000
@@ -59,7 +59,7 @@ data:
                       issuer: http://localhost:8180/realms/api-gateway-poc
                       remote_jwks:
                         http_uri:
-                          uri: http://keycloak:8080/realms/api-gateway-poc/protocol/openid-connect/certs
+                          uri: http://keycloak:8180/realms/api-gateway-poc/protocol/openid-connect/certs
                           cluster: keycloak_cluster
                           timeout: 5s
                         cache_duration:
@@ -151,14 +151,7 @@ data:
                 address:
                   socket_address:
                     address: keycloak
-                    port_value: 8080
-        health_checks:
-        - timeout: 5s
-          interval: 30s
-          unhealthy_threshold: 2
-          healthy_threshold: 2
-          http_health_check:
-            path: /health/ready
+                    port_value: 8180
 
       - name: authz_service_cluster
         connect_timeout: 1s

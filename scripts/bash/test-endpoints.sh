@@ -45,7 +45,7 @@ echo "================================"
 test_endpoint "http://localhost:9901/ready" "Envoy Admin - Ready"
 
 # Test Keycloak health
-test_endpoint "http://localhost:8180/health/ready" "Keycloak Health"
+test_endpoint "http://localhost:9000/health/ready" "Keycloak Health (Management Port)"
 
 echo ""
 echo "================================"

@@ -33,7 +33,7 @@ spec:
             path: /products/health
             port: 8000
           initialDelaySeconds: 10
-          periodSeconds: 30
+          periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
         readinessProbe:

@@ -26,6 +26,9 @@ spec:
         - name: http
           containerPort: 8080
           protocol: TCP
+        - name: management
+          containerPort: 9000
+          protocol: TCP
         env:
         - name: KC_BOOTSTRAP_ADMIN_USERNAME
           valueFrom:
@@ -43,15 +46,15 @@ spec:
         livenessProbe:
           httpGet:
             path: /health/live
-            port: 8080
-          initialDelaySeconds: 90
+            port: 9000
+          initialDelaySeconds: 30
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /health/ready
-            port: 8080
+            port: 9000
           initialDelaySeconds: 60
           periodSeconds: 10
           timeoutSeconds: 5
