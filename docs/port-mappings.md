@@ -16,4 +16,12 @@ Notes:
 - `docker-compose.yml` host port mappings are included in the rightmost column and apply only to the Docker Compose local setup.
 - Readiness/liveness probe ports are the same as the service/pod ports listed above (see each deployment manifest for details).
 
+Dev-only / security note:
+- For this Proof of Concept the Envoy admin port (`9901`) is intentionally exposed for development and debugging convenience.
+- Do NOT expose the admin interface publicly in production. Recommended mitigations for production environments:
+  - Bind the admin interface to localhost or a secure management network.
+  - Do not publish the admin port via a LoadBalancer; keep it ClusterIP or remove the service for the admin listener.
+  - Apply NetworkPolicy or firewall rules to restrict access to trusted maintenance/management hosts.
+  - Consider placing an authentication/authorization proxy in front of admin endpoints.
+
 Generated from repository manifests on branch `feature/k8s-basic`.
