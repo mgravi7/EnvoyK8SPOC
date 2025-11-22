@@ -1,0 +1,18 @@
+---
+# Authorization service ClusterIP service (internal only)
+apiVersion: v1
+kind: Service
+metadata:
+  name: authz-service
+  namespace: api-gateway-poc
+  labels:
+    app: authz-service
+spec:
+  type: ClusterIP
+  selector:
+    app: authz-service
+  ports:
+  - name: http
+    port: 9000
+    targetPort: 9000
+    protocol: TCP

@@ -1,0 +1,46 @@
+---
+# Authorization service deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authz-service
+  namespace: api-gateway-poc
+  labels:
+    app: authz-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authz-service
+  template:
+    metadata:
+      labels:
+        app: authz-service
+    spec:
+      containers:
+      - name: authz-service
+        image: authz-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 9000
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: authz-config
+        livenessProbe:
+          httpGet:
+            path: /authz/health
+            port: 9000
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /authz/health
+            port: 9000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3

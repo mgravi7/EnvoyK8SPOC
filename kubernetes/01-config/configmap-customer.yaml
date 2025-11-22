@@ -1,0 +1,12 @@
+---
+# Customer service environment configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: customer-config
+  namespace: api-gateway-poc
+  labels:
+    app: customer-service
+data:
+  SERVICE_NAME: "customer-service"
+  SERVICE_PORT: "8000"

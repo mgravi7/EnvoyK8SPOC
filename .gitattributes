@@ -12,7 +12,7 @@
 Dockerfile text eol=lf
 
 # Markdown files
-*.md text eol=lf
+*.md text=auto eol=lf working-tree-encoding=UTF-8
 
 # Let Git handle other text files automatically
 * text=auto
