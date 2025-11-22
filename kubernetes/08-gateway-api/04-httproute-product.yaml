@@ -1,0 +1,27 @@
+---
+# HTTPRoute for Product Service
+# Routes /products/* to product-service
+# Requires JWT authentication and external authorization
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: product-route
+  namespace: api-gateway-poc
+  labels:
+    app: product-service
+    phase: phase3
+spec:
+  parentRefs:
+  - name: api-gateway
+    namespace: api-gateway-poc
+  hostnames:
+  - "*"  # Accept all hostnames (for local development)
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /products
+    backendRefs:
+    - name: product-service
+      port: 8000
+      weight: 1

@@ -1,0 +1,38 @@
+---
+# Envoy Gateway Installation for Phase 3
+# This file provides instructions and resources for installing Envoy Gateway
+#
+# INSTALLATION:
+# 1. Install Envoy Gateway v1.2.x (compatible with Envoy v1.31):
+#    kubectl apply -f https://github.com/envoyproxy/gateway/releases/download/v1.2.0/install.yaml
+#
+# 2. Wait for Envoy Gateway to be ready:
+#    kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
+#
+# 3. Verify installation:
+#    kubectl get pods -n envoy-gateway-system
+#    kubectl get crd | grep gateway
+#
+# Expected CRDs after installation:
+# - gatewayclasses.gateway.networking.k8s.io
+# - gateways.gateway.networking.k8s.io
+# - httproutes.gateway.networking.k8s.io
+# - referencegrants.gateway.networking.k8s.io
+# - backendtlspolicies.gateway.envoyproxy.io
+# - clienttrafficpolicies.gateway.envoyproxy.io
+# - envoyproxies.gateway.envoyproxy.io
+# - securitypolicies.gateway.envoyproxy.io
+#
+# NOTES:
+# - Envoy Gateway operator runs in envoy-gateway-system namespace
+# - Gateway resources will be created in api-gateway-poc namespace
+# - This is a one-time installation per cluster
+# - To uninstall: kubectl delete -f https://github.com/envoyproxy/gateway/releases/download/v1.2.0/install.yaml
+#
+# VERSION COMPATIBILITY:
+# - Envoy Gateway v1.2.x supports Envoy Proxy v1.31.x
+# - Kubernetes Gateway API v1.1.x
+#
+---
+# Manual installation command reference (for documentation):
+# kubectl apply -f https://github.com/envoyproxy/gateway/releases/download/v1.2.0/install.yaml

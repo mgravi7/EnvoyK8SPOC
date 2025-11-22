@@ -1,0 +1,36 @@
+---
+# SecurityPolicy for JWT Authentication
+# Applies JWT validation at the Gateway level for protected routes
+# This replaces Phase 2's Envoy JWT filter configuration
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: jwt-authentication
+  namespace: api-gateway-poc
+  labels:
+    app: api-gateway
+    phase: phase3
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: api-gateway
+    namespace: api-gateway-poc
+  jwt:
+    providers:
+    - name: keycloak-provider
+      issuer: http://localhost:8180/realms/api-gateway-poc
+      remoteJWKS:
+        uri: http://keycloak.api-gateway-poc.svc.cluster.local:8180/realms/api-gateway-poc/protocol/openid-connect/certs
+      claimToHeaders:
+      - claim: email
+        header: x-user-email
+      - claim: preferred_username
+        header: x-user-name
+      # Extract roles from the JWT token and forward as header
+      # Keycloak stores roles in realm_access.roles
+      - claim: realm_access.roles
+        header: x-jwt-roles
+  # Define which routes require JWT authentication
+  # By default, applies to all routes attached to the Gateway
+  # We'll handle Keycloak route exception via route ordering/priority

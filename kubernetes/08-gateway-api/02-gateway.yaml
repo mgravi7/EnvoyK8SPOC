@@ -1,0 +1,45 @@
+---
+# Gateway resource - replaces Phase 2 Envoy Deployment
+# This creates the actual gateway proxy that handles incoming traffic
+# Envoy Gateway will automatically create Deployment, Service, and ConfigMap
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: api-gateway
+  namespace: api-gateway-poc
+  labels:
+    app: api-gateway
+    phase: phase3
+spec:
+  gatewayClassName: envoy-gateway
+  listeners:
+  # Main HTTP listener for application traffic
+  - name: http
+    protocol: HTTP
+    port: 8080
+    allowedRoutes:
+      namespaces:
+        from: Same
+---
+# Service to expose the Gateway externally
+# Envoy Gateway creates its own Service, but we want to control the type
+# This may need adjustment based on Envoy Gateway's default Service creation
+# NOTE: Envoy Gateway automatically creates a LoadBalancer Service by default
+# If you need to customize, you can use the EnvoyProxy custom resource
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: custom-proxy-config
+  namespace: api-gateway-poc
+  labels:
+    app: api-gateway
+    phase: phase3
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: LoadBalancer
+        # Annotations for cloud providers if needed (not needed for Docker Desktop)
+        # annotations:
+        #   service.beta.kubernetes.io/aws-load-balancer-type: "nlb"

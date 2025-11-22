@@ -1,4 +1,4 @@
-# Verify EnvoyK8SPOC Phase 2 deployment
+# Verify EnvoyK8SPOC deployment (Phase 2 or Phase 3)
 # Checks pod status, service endpoints, and component health
 
 $ErrorActionPreference = "Stop"
@@ -7,6 +7,20 @@ $Namespace = "api-gateway-poc"
 Write-Host "================================" -ForegroundColor Cyan
 Write-Host "Verifying Deployment" -ForegroundColor Cyan
 Write-Host "================================" -ForegroundColor Cyan
+
+# Detect which phase is deployed
+$phase2Envoy = kubectl get deployment envoy -n $Namespace --ignore-not-found=true 2>$null
+$phase3Gateway = kubectl get gateway -n $Namespace --ignore-not-found=true 2>$null
+
+if ($phase3Gateway) {
+    $deploymentPhase = "Phase 3 (Gateway API)"
+} elseif ($phase2Envoy) {
+    $deploymentPhase = "Phase 2 (Direct Envoy)"
+} else {
+    $deploymentPhase = "Unknown (no gateway detected)"
+}
+
+Write-Host "Detected: $deploymentPhase" -ForegroundColor Yellow
 
 Write-Host ""
 Write-Host "1. Checking namespace..." -ForegroundColor Yellow
@@ -18,9 +32,9 @@ kubectl get pods -n $Namespace -o wide
 
 Write-Host ""
 Write-Host "3. Checking pod status details..." -ForegroundColor Yellow
-$pods = kubectl get pods -n $Namespace --no-headers | ForEach-Object { ($_ -split '\s+')[0] }
+$pods = kubectl get pods -n $Namespace --no-headers 2>$null | ForEach-Object { ($_ -split '\s+')[0] }
 foreach ($pod in $pods) {
-    $status = kubectl get pod $pod -n $Namespace -o jsonpath='{.status.phase}'
+    $status = kubectl get pod $pod -n $Namespace -o jsonpath='{.status.phase}' 2>$null
     if ($status -ne "Running") {
         Write-Host "WARNING: Pod $pod is in $status state" -ForegroundColor Red
         Write-Host "Recent events:"
@@ -48,8 +62,32 @@ Write-Host ""
 Write-Host "8. Checking PVC..." -ForegroundColor Yellow
 kubectl get pvc -n $Namespace
 
+if ($phase3Gateway) {
+    Write-Host ""
+    Write-Host "9. Checking Gateway API resources (Phase 3)..." -ForegroundColor Yellow
+    
+    Write-Host ""
+    Write-Host "Gateway:" -ForegroundColor Cyan
+    kubectl get gateway -n $Namespace
+    Write-Host ""
+    kubectl describe gateway -n $Namespace | Select-String -Pattern "Status:" -Context 0,10
+    
+    Write-Host ""
+    Write-Host "HTTPRoutes:" -ForegroundColor Cyan
+    kubectl get httproute -n $Namespace
+    
+    Write-Host ""
+    Write-Host "SecurityPolicies:" -ForegroundColor Cyan
+    kubectl get securitypolicy -n $Namespace
+    
+    Write-Host ""
+    Write-Host "GatewayClass:" -ForegroundColor Cyan
+    kubectl get gatewayclass envoy-gateway 2>$null
+    if ($LASTEXITCODE -ne 0) { Write-Host "GatewayClass not found" }
+}
+
 Write-Host ""
-Write-Host "9. Checking recent logs for each service..." -ForegroundColor Yellow
+Write-Host "10. Checking recent logs for each service..." -ForegroundColor Yellow
 
 Write-Host ""
 Write-Host "Redis logs (last 10 lines):" -ForegroundColor Cyan
@@ -76,30 +114,43 @@ Write-Host "Product Service logs (last 10 lines):" -ForegroundColor Cyan
 kubectl logs -n $Namespace deployment/product-service --tail=10 2>$null
 if ($LASTEXITCODE -ne 0) { Write-Host "No logs available" }
 
-Write-Host ""
-Write-Host "Envoy logs (last 10 lines):" -ForegroundColor Cyan
-kubectl logs -n $Namespace deployment/envoy --tail=10 2>$null
-if ($LASTEXITCODE -ne 0) { Write-Host "No logs available" }
+if ($phase2Envoy) {
+    Write-Host ""
+    Write-Host "Envoy logs (last 10 lines) - Phase 2:" -ForegroundColor Cyan
+    kubectl logs -n $Namespace deployment/envoy --tail=10 2>$null
+    if ($LASTEXITCODE -ne 0) { Write-Host "No logs available" }
+}
+
+if ($phase3Gateway) {
+    Write-Host ""
+    Write-Host "Gateway Envoy Proxy logs (last 10 lines) - Phase 3:" -ForegroundColor Cyan
+    kubectl logs -n $Namespace -l gateway.envoyproxy.io/owning-gateway-name=api-gateway --tail=10 2>$null
+    if ($LASTEXITCODE -ne 0) { Write-Host "No logs available" }
+}
 
 Write-Host ""
 Write-Host "================================" -ForegroundColor Cyan
 Write-Host "Verification Summary" -ForegroundColor Cyan
 Write-Host "================================" -ForegroundColor Cyan
 
-$runningPods = (kubectl get pods -n $Namespace --no-headers | Select-String "Running").Count
-$totalPods = (kubectl get pods -n $Namespace --no-headers).Count
+$runningPods = (kubectl get pods -n $Namespace --no-headers 2>$null | Select-String "Running").Count
+$totalPods = (kubectl get pods -n $Namespace --no-headers 2>$null).Count
 
-Write-Host "Pods running: $runningPods / $totalPods"
+Write-Host "Deployment Phase: $deploymentPhase" -ForegroundColor White
+Write-Host "Pods running: $runningPods / $totalPods" -ForegroundColor White
 
-if ($runningPods -eq $totalPods) {
-    Write-Host "Status: All pods are running!" -ForegroundColor Green
+if ($runningPods -eq $totalPods -and $totalPods -gt 0) {
+    Write-Host "Status: ✓ All pods are running!" -ForegroundColor Green
 } else {
-    Write-Host "Status: Some pods are not running. Check logs above." -ForegroundColor Red
+    Write-Host "Status: ✗ Some pods are not running. Check logs above." -ForegroundColor Red
 }
 
 Write-Host ""
-Write-Host "To check detailed pod status:"
-Write-Host "  kubectl describe pod <pod-name> -n $Namespace"
-Write-Host ""
-Write-Host "To view full logs:"
-Write-Host "  kubectl logs -f deployment/<deployment-name> -n $Namespace"
+Write-Host "Useful commands:" -ForegroundColor Cyan
+Write-Host "  kubectl describe pod <pod-name> -n $Namespace" -ForegroundColor White
+Write-Host "  kubectl logs -f deployment/<deployment-name> -n $Namespace" -ForegroundColor White
+
+if ($phase3Gateway) {
+    Write-Host "  kubectl describe gateway api-gateway -n $Namespace" -ForegroundColor White
+    Write-Host "  kubectl logs -n $Namespace -l gateway.envoyproxy.io/owning-gateway-name=api-gateway" -ForegroundColor White
+}

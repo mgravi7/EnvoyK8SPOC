@@ -1,15 +1,20 @@
-# Kubernetes Deployment Guide - Phase 2
+# Kubernetes Deployment Guide
 
-This guide covers deploying EnvoyK8SPOC to Kubernetes using Docker Desktop with direct Envoy deployment.
+This guide covers deploying EnvoyK8SPOC to Kubernetes using Docker Desktop with both Phase 2 (direct Envoy) and Phase 3 (Gateway API) deployments.
 
 ## Table of Contents
 - [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Detailed Deployment Steps](#detailed-deployment-steps)
+- [Phase 2: Direct Envoy Deployment](#phase-2-direct-envoy-deployment)
+  - [Quick Start Phase 2](#quick-start-phase-2)
+  - [Detailed Deployment Steps Phase 2](#detailed-deployment-steps-phase-2)
+- [Phase 3: Gateway API Deployment](#phase-3-gateway-api-deployment)
+  - [Quick Start Phase 3](#quick-start-phase-3)
+  - [Detailed Deployment Steps Phase 3](#detailed-deployment-steps-phase-3)
 - [Verification](#verification)
 - [Testing](#testing)
 - [Accessing Services](#accessing-services)
 - [Common Issues](#common-issues)
+- [Clean Up](#clean-up)
 
 ## Prerequisites
 
@@ -48,62 +53,55 @@ Expected output:
 - Kubernetes: v1.25+ or newer
 - Python: 3.12.x
 
-## Quick Start
+---
 
-### 1. Build Images
+## Phase 2: Direct Envoy Deployment
 
-**Linux/Mac/WSL:**
+Phase 2 uses direct Envoy Proxy deployment with static configuration in ConfigMap.
+
+### Quick Start Phase 2
+
+**1. Build Images:**
+
 ```bash
+# Linux/Mac/WSL
 cd scripts/bash
 chmod +x *.sh
 ./build-images.sh
-```
 
-**Windows PowerShell:**
-```powershell
+# Windows PowerShell
 cd scripts\powershell
 .\build-images.ps1
 ```
 
-### 2. Deploy to Kubernetes
+**2. Deploy to Kubernetes:**
 
-**Linux/Mac/WSL:**
 ```bash
+# Linux/Mac/WSL
 ./deploy-k8s-phase2.sh
-```
 
-**Windows PowerShell:**
-```powershell
+# Windows PowerShell
 .\deploy-k8s-phase2.ps1
 ```
 
-### 3. Verify Deployment
+**3. Verify and Test:**
 
-**Linux/Mac/WSL:**
 ```bash
+# Linux/Mac/WSL
 ./verify-deployment.sh
-```
-
-**Windows PowerShell:**
-```powershell
-.\verify-deployment.ps1
-```
-
-### 4. Test Endpoints
-
-**Linux/Mac/WSL:**
-```bash
 ./test-endpoints.sh
-```
 
-**Windows PowerShell:**
-```powershell
+# Windows PowerShell
+.\verify-deployment.ps1
 .\test-endpoints.ps1
 ```
 
-## Detailed Deployment Steps
+### Detailed Deployment Steps Phase 2
 
-### Step 1: Build Docker Images
+<details>
+<summary>Click to expand Phase 2 detailed steps</summary>
+
+#### Step 1: Build Docker Images
 
 All services need to be built as Docker images before deploying to Kubernetes.
 
@@ -125,62 +123,39 @@ Verify images:
 docker images | grep -E "customer-service|product-service|authz-service|keycloak|envoy"
 ```
 
-### Step 2: Deploy Kubernetes Resources
+#### Step 2: Deploy Kubernetes Resources
 
 Resources are deployed in this order:
 
 1. **Namespace** (api-gateway-poc)
-   ```bash
-   kubectl apply -f kubernetes/00-namespace/
-   ```
-
 2. **ConfigMaps and Secrets**
-   ```bash
-   kubectl apply -f kubernetes/01-config/
-   ```
-
 3. **Storage** (Redis PVC)
-   ```bash
-   kubectl apply -f kubernetes/02-storage/
-   ```
+4. **Redis** (wait for ready)
+5. **Keycloak** (wait for ready - takes ~90 seconds)
+6. **Authorization Service** (wait for ready)
+7. **Backend Services** (customer-service, product-service)
+8. **Envoy Gateway** (wait for ready)
 
-4. **Redis**
-   ```bash
-   kubectl apply -f kubernetes/03-data/
-   kubectl wait --for=condition=available deployment/redis -n api-gateway-poc --timeout=120s
-   ```
-
-5. **Keycloak**
-   ```bash
-   kubectl apply -f kubernetes/04-iam/
-   kubectl wait --for=condition=available deployment/keycloak -n api-gateway-poc --timeout=180s
-   ```
-
-6. **Authorization Service**
-   ```bash
-   kubectl apply -f kubernetes/05-authz/
-   kubectl wait --for=condition=available deployment/authz-service -n api-gateway-poc --timeout=120s
-   ```
-
-7. **Backend Services**
-   ```bash
-   kubectl apply -f kubernetes/06-services/
-   kubectl wait --for=condition=available deployment/customer-service -n api-gateway-poc --timeout=120s
-   kubectl wait --for=condition=available deployment/product-service -n api-gateway-poc --timeout=120s
-   ```
-
-8. **Envoy Gateway**
-   ```bash
-   kubectl apply -f kubernetes/07-envoy-gateway/
-   kubectl wait --for=condition=available deployment/envoy -n api-gateway-poc --timeout=120s
-   ```
-
-Or use the automated script:
+Use the automated script:
 ```bash
 ./scripts/bash/deploy-k8s-phase2.sh
 ```
 
-### Step 3: Verify All Pods Are Running
+Or deploy manually:
+```bash
+kubectl apply -f kubernetes/00-namespace/
+kubectl apply -f kubernetes/01-config/
+kubectl apply -f kubernetes/02-storage/
+kubectl apply -f kubernetes/03-data/
+# Wait for Redis...
+kubectl apply -f kubernetes/04-iam/
+# Wait for Keycloak...
+kubectl apply -f kubernetes/05-authz/
+kubectl apply -f kubernetes/06-services/
+kubectl apply -f kubernetes/07-envoy-gateway/
+```
+
+#### Step 3: Verify All Pods Are Running
 
 ```bash
 kubectl get pods -n api-gateway-poc
@@ -197,65 +172,224 @@ product-service-xxx                1/1     Running   0          2m
 redis-xxx                          1/1     Running   0          4m
 ```
 
-### Step 4: Check Services
+</details>
 
+---
+
+## Phase 3: Gateway API Deployment
+
+Phase 3 uses Kubernetes Gateway API with Envoy Gateway operator for declarative, Kubernetes-native configuration.
+
+### Quick Start Phase 3
+
+**1. Install Envoy Gateway (one-time):**
+
+```bash
+# Install Envoy Gateway operator
+kubectl apply -f https://github.com/envoyproxy/gateway/releases/download/v1.2.0/install.yaml
+
+# Wait for it to be ready
+kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
+
+# Verify installation
+kubectl get pods -n envoy-gateway-system
+```
+
+**2. Build Images (if not already built):**
+
+```bash
+# Linux/Mac/WSL
+cd scripts/bash
+./build-images.sh
+
+# Windows PowerShell
+cd scripts\powershell
+.\build-images.ps1
+```
+
+**3. Deploy Phase 3:**
+
+```bash
+# Linux/Mac/WSL
+./deploy-k8s-phase3.sh
+
+# Windows PowerShell
+.\deploy-k8s-phase3.ps1
+```
+
+The script will:
+- Check Envoy Gateway is installed
+- Detect and optionally remove Phase 2 Envoy (port conflict prevention)
+- Deploy backend services
+- Create Gateway API resources
+- Wait for Gateway to be ready
+
+**4. Verify and Test:**
+
+```bash
+# Linux/Mac/WSL
+./verify-deployment.sh
+./test-endpoints.sh
+
+# Windows PowerShell
+.\verify-deployment.ps1
+.\test-endpoints.ps1
+```
+
+### Detailed Deployment Steps Phase 3
+
+<details>
+<summary>Click to expand Phase 3 detailed steps</summary>
+
+#### Step 1: Install Envoy Gateway (One-time per cluster)
+
+```bash
+# Install Envoy Gateway v1.2.0 (compatible with Envoy v1.31)
+kubectl apply -f https://github.com/envoyproxy/gateway/releases/download/v1.2.0/install.yaml
+
+# Wait for Envoy Gateway to be ready
+kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
+
+# Verify installation
+kubectl get pods -n envoy-gateway-system
+kubectl get crd | grep gateway
+```
+
+Expected CRDs:
+- `gatewayclasses.gateway.networking.k8s.io`
+- `gateways.gateway.networking.k8s.io`
+- `httproutes.gateway.networking.k8s.io`
+- `securitypolicies.gateway.envoyproxy.io`
+
+#### Step 2: Deploy Backend Services
+
+Same as Phase 2 (steps 1-7), but skip the Envoy Deployment:
+
+```bash
+kubectl apply -f kubernetes/00-namespace/
+kubectl apply -f kubernetes/01-config/
+kubectl apply -f kubernetes/02-storage/
+kubectl apply -f kubernetes/03-data/
+kubectl apply -f kubernetes/04-iam/
+kubectl apply -f kubernetes/05-authz/
+kubectl apply -f kubernetes/06-services/
+# Do NOT apply kubernetes/07-envoy-gateway/ in Phase 3
+```
+
+#### Step 3: Deploy Gateway API Resources
+
+```bash
+# GatewayClass
+kubectl apply -f kubernetes/08-gateway-api/01-gatewayclass.yaml
+
+# Gateway (this auto-creates Envoy proxy Deployment + Service)
+kubectl apply -f kubernetes/08-gateway-api/02-gateway.yaml
+
+# Wait for Gateway to be ready
+kubectl wait --for=condition=programmed gateway/api-gateway -n api-gateway-poc --timeout=180s
+
+# HTTPRoutes
+kubectl apply -f kubernetes/08-gateway-api/03-httproute-customer.yaml
+kubectl apply -f kubernetes/08-gateway-api/04-httproute-product.yaml
+kubectl apply -f kubernetes/08-gateway-api/05-httproute-auth-me.yaml
+kubectl apply -f kubernetes/08-gateway-api/06-httproute-keycloak.yaml
+
+# SecurityPolicies
+kubectl apply -f kubernetes/08-gateway-api/07-securitypolicy-jwt.yaml
+kubectl apply -f kubernetes/08-gateway-api/08-securitypolicy-extauth.yaml
+```
+
+Or use the automated script:
+```bash
+./scripts/bash/deploy-k8s-phase3.sh
+```
+
+#### Step 4: Verify Gateway API Resources
+
+```bash
+# Check Gateway status
+kubectl get gateway -n api-gateway-poc
+kubectl describe gateway api-gateway -n api-gateway-poc
+
+# Check HTTPRoutes
+kubectl get httproute -n api-gateway-poc
+
+# Check SecurityPolicies
+kubectl get securitypolicy -n api-gateway-poc
+
+# Check generated Envoy proxy
+kubectl get pods -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
+
+# Check Gateway service
+kubectl get svc -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
+```
+
+Expected Gateway status:
+```
+NAME          CLASS           ADDRESS      PROGRAMMED   AGE
+api-gateway   envoy-gateway   localhost    True         2m
+```
+
+</details>
+
+### Phase 3 vs Phase 2
+
+| Feature | Phase 2 | Phase 3 |
+|---------|---------|---------|
+| **Configuration** | Static envoy.yaml | Kubernetes CRDs |
+| **Gateway** | Manual Deployment | Auto-created by Gateway |
+| **Routing** | Envoy route_config | HTTPRoute resources |
+| **Security** | Envoy http_filters | SecurityPolicy resources |
+| **Updates** | ConfigMap edit + restart | Apply CRD (no restart) |
+
+**See [docs/gateway-api-migration.md](gateway-api-migration.md) for detailed Phase 3 migration guide.**
+
+---
+
+## Verification
+
+Run the verification script to check all components:
+
+```bash
+# Bash
+./scripts/bash/verify-deployment.sh
+
+# PowerShell
+.\scripts\powershell\verify-deployment.ps1
+```
+
+The script automatically detects which phase is deployed and checks:
+- ✓ All pods running
+- ✓ Services and endpoints
+- ✓ ConfigMaps and secrets
+- ✓ Phase 2: Envoy Deployment
+- ✓ Phase 3: Gateway, HTTPRoutes, SecurityPolicies
+- ✓ Recent logs from each service
+
+### Manual Verification
+
+**Check Pods:**
+```bash
+kubectl get pods -n api-gateway-poc
+```
+
+**Check Services:**
 ```bash
 kubectl get svc -n api-gateway-poc
 ```
 
-Expected output:
-```
-NAME               TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)
-authz-service      ClusterIP      10.x.x.x        <none>        9000/TCP
-customer-service   ClusterIP      10.x.x.x        <none>        8000/TCP
-envoy              LoadBalancer   10.x.x.x        localhost     8080:xxx/TCP,9901:xxx/TCP
-keycloak           LoadBalancer   10.x.x.x        localhost     8180:xxx/TCP
-product-service    ClusterIP      10.x.x.x        <none>        8000/TCP
-redis              ClusterIP      10.x.x.x        <none>        6379/TCP
-```
-
-## Verification
-
-### Check Pod Logs
-
+**Phase 2 - Check Envoy:**
 ```bash
-# Redis
-kubectl logs -f deployment/redis -n api-gateway-poc
-
-# Keycloak
-kubectl logs -f deployment/keycloak -n api-gateway-poc
-
-# AuthZ Service
-kubectl logs -f deployment/authz-service -n api-gateway-poc
-
-# Customer Service
-kubectl logs -f deployment/customer-service -n api-gateway-poc
-
-# Product Service
-kubectl logs -f deployment/product-service -n api-gateway-poc
-
-# Envoy
 kubectl logs -f deployment/envoy -n api-gateway-poc
 ```
 
-### Check Health Endpoints
-
+**Phase 3 - Check Gateway:**
 ```bash
-# Envoy admin ready check
-curl http://localhost:9901/ready
+# Gateway status
+kubectl describe gateway api-gateway -n api-gateway-poc
 
-# Keycloak health
-curl http://localhost:8180/health/ready
-```
-
-### Check Service Endpoints (via Envoy)
-
-```bash
-# Products (no auth required)
-curl http://localhost:8080/products
-
-# Customers (requires auth - should return 401)
-curl http://localhost:8080/customers
+# Envoy proxy logs
+kubectl logs -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
 ```
 
 ## Testing
@@ -263,54 +397,60 @@ curl http://localhost:8080/customers
 ### Get JWT Token from Keycloak
 
 ```bash
-TOKEN=$(curl -s -X POST "http://localhost:8180/realms/api-gateway-poc/protocol/openid-connect/token" \
+TOKEN=$(curl -s -X POST "http://localhost:8080/auth/realms/api-gateway-poc/protocol/openid-connect/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=test-client" \
-  -d "username=testuser" \
-  -d "password=testpass" \
+  -d "client_id=customer-client" \
+  -d "client_secret=customer-secret-key" \
+  -d "username=alice@example.com" \
+  -d "password=alice123" \
   -d "grant_type=password" \
   | jq -r '.access_token')
 
-echo $TOKEN
+echo "Token obtained: ${TOKEN:0:50}..."
 ```
 
-### Test Authenticated Request
+### Test Endpoints
 
+**Public endpoint (no auth):**
 ```bash
-# Customer service (requires JWT)
+curl http://localhost:8080/products
+```
+
+**Protected endpoints (requires JWT):**
+```bash
+# Customer service
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/customers
 
-# Specific customer
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/customers/1
+# Product service
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/products
+
+# User info
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/auth/me
 ```
 
 ### Run Integration Tests
 
-1. Update test configuration in `tests/integration/conftest.py`:
-   ```python
-   GATEWAY_BASE_URL = "http://localhost:8080"
-   ```
+```bash
+# Ensure GATEWAY_BASE_URL is set correctly in tests/integration/conftest.py
+cd tests/integration
+pytest -v
+```
 
-2. Run tests:
-   ```bash
-   cd tests/integration
-   pytest -v
-   ```
-
-Expected: All 90 tests should pass.
+Expected: All 90 tests should pass (same for Phase 2 and Phase 3).
 
 ## Accessing Services
 
 ### Keycloak Admin Console
-- URL: http://localhost:8180
+- URL: http://localhost:8180 (Phase 2) or http://localhost:8080/auth (Phase 3)
 - Username: `admin`
 - Password: `admin`
 
 **WARNING: Development credentials only - DO NOT use in production**
 
-### Envoy Gateway
-- API Gateway: http://localhost:8080
-- Admin Interface: http://localhost:9901
+### API Gateway
+- **Phase 2:** http://localhost:8080 (Envoy direct)
+- **Phase 3:** http://localhost:8080 (Gateway API)
+- Admin: http://localhost:9901 (Phase 2 only)
 
 ### Available Endpoints
 
@@ -326,9 +466,7 @@ Expected: All 90 tests should pass.
 - GET http://localhost:8080/auth/me
 
 **Keycloak:**
-- Admin Console: http://localhost:8180
-- Token endpoint: http://localhost:8180/realms/api-gateway-poc/protocol/openid-connect/token
-- JWKS: http://localhost:8180/realms/api-gateway-poc/protocol/openid-connect/certs
+- Token endpoint: http://localhost:8080/auth/realms/api-gateway-poc/protocol/openid-connect/token
 
 ## Common Issues
 
@@ -346,7 +484,7 @@ kubectl logs <pod-name> -n api-gateway-poc
 
 # Common causes:
 # 1. Image not built - run ./build-images.sh
-# 2. Insufficient resources - increase Docker Desktop memory
+# 2. Insufficient resources - increase Docker Desktop memory (Settings > Resources)
 # 3. Port conflicts - ensure ports 8080, 8180, 9901 are free
 ```
 
@@ -361,9 +499,52 @@ kubectl logs <pod-name> -n api-gateway-poc
 kubectl get svc -n api-gateway-poc
 
 # If still pending, restart Docker Desktop
-# Or use port-forward instead:
-kubectl port-forward -n api-gateway-poc svc/envoy 8080:8080
-kubectl port-forward -n api-gateway-poc svc/keycloak 8180:8180
+# Or use port-forward:
+kubectl port-forward -n api-gateway-poc svc/envoy 8080:8080  # Phase 2
+# Phase 3 - find the Gateway service name first:
+kubectl get svc -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
+kubectl port-forward -n api-gateway-poc svc/<gateway-service-name> 8080:8080
+```
+
+### Phase 3: Gateway Not Ready
+
+**Symptom:** Gateway status shows `Programmed: False`
+
+**Solutions:**
+```bash
+# Check Gateway status and events
+kubectl describe gateway api-gateway -n api-gateway-poc
+
+# Check Envoy Gateway controller logs
+kubectl logs -n envoy-gateway-system deployment/envoy-gateway --tail=50
+
+# Verify Envoy Gateway is installed
+kubectl get pods -n envoy-gateway-system
+
+# Check for port conflicts with Phase 2
+kubectl get deployment envoy -n api-gateway-poc
+# If found, delete Phase 2 Envoy:
+kubectl delete -f kubernetes/07-envoy-gateway/
+```
+
+### Phase 2 and Phase 3 Port Conflicts
+
+**Symptom:** Cannot deploy Phase 3 while Phase 2 is running (or vice versa)
+
+**Solutions:**
+```bash
+# Both phases use port 8080, so they cannot run simultaneously
+# Option 1: Clean up and redeploy
+./scripts/bash/cleanup-k8s.sh
+./scripts/bash/deploy-k8s-phase3.sh  # or deploy-k8s-phase2.sh
+
+# Option 2: Just delete the conflicting gateway
+# For Phase 2 to Phase 3:
+kubectl delete -f kubernetes/07-envoy-gateway/
+# For Phase 3 to Phase 2:
+kubectl delete gateway api-gateway -n api-gateway-poc
+kubectl delete httproute --all -n api-gateway-poc
+kubectl delete securitypolicy --all -n api-gateway-poc
 ```
 
 ### Keycloak Takes Long to Start
@@ -395,28 +576,6 @@ kubectl get svc redis -n api-gateway-poc
 kubectl rollout restart deployment/authz-service -n api-gateway-poc
 ```
 
-### Cannot Access Services
-
-**Symptom:** curl to localhost:8080 fails
-
-**Solutions:**
-```bash
-# 1. Verify pods are running
-kubectl get pods -n api-gateway-poc
-
-# 2. Check service endpoints
-kubectl get endpoints -n api-gateway-poc
-
-# 3. Verify LoadBalancer IP
-kubectl get svc envoy -n api-gateway-poc
-
-# 4. Try port-forward
-kubectl port-forward -n api-gateway-poc svc/envoy 8080:8080
-
-# 5. Check Envoy logs
-kubectl logs -f deployment/envoy -n api-gateway-poc
-```
-
 ### Tests Failing
 
 **Symptom:** Integration tests fail after deployment
@@ -424,8 +583,8 @@ kubectl logs -f deployment/envoy -n api-gateway-poc
 **Solutions:**
 ```bash
 # 1. Verify GATEWAY_BASE_URL is correct
-# Edit tests/integration/conftest.py
-GATEWAY_BASE_URL = "http://localhost:8080"
+# Edit tests/integration/conftest.py:
+# GATEWAY_BASE_URL = "http://localhost:8080"
 
 # 2. Wait for all pods to be ready
 kubectl get pods -n api-gateway-poc
@@ -434,42 +593,55 @@ kubectl get pods -n api-gateway-poc
 curl http://localhost:8080/products
 
 # 4. Get fresh token
-TOKEN=$(curl -s -X POST "http://localhost:8180/realms/api-gateway-poc/protocol/openid-connect/token" ...)
+TOKEN=$(curl -s -X POST "http://localhost:8080/auth/realms/api-gateway-poc/protocol/openid-connect/token" ...)
 
 # 5. Run specific test
-pytest tests/integration/test_customer_service.py::TestCustomerService::test_customers_list_access -v
+pytest tests/integration/test_customer_service.py -v
 ```
 
 ## Clean Up
 
 To remove all deployed resources:
 
-**Linux/Mac/WSL:**
 ```bash
+# Bash
 ./scripts/bash/cleanup-k8s.sh
-```
 
-**Windows PowerShell:**
-```powershell
+# PowerShell
 .\scripts\powershell\cleanup-k8s.ps1
 ```
 
-This deletes the entire `api-gateway-poc` namespace and all resources within it.
+This deletes:
+- The entire `api-gateway-poc` namespace
+- All Phase 2 and Phase 3 resources
+- GatewayClass (Phase 3)
+
+**Note:** Envoy Gateway operator (envoy-gateway-system namespace) is NOT deleted and can be reused.
+
+To uninstall Envoy Gateway:
+```bash
+kubectl delete -f https://github.com/envoyproxy/gateway/releases/download/v1.2.0/install.yaml
+```
 
 ## Next Steps
 
-Once Phase 2 is working successfully:
+### After Phase 2
+1. Review Kubernetes fundamentals
+2. Understand service-to-service communication
+3. Explore kubectl debugging commands
+4. Prepare for Phase 3 migration
 
-1. Review what you've learned about Kubernetes deployments
-2. Understand how services communicate via DNS
-3. Explore kubectl commands for debugging
-4. Prepare for Phase 3: Migration to Gateway API
-
-See `docs/gateway-api-migration.md` for Phase 3 planning.
+### After Phase 3
+1. Review Gateway API concepts
+2. Explore dynamic route updates
+3. Consider Phase 4 enhancements (rate limiting, observability)
+4. Plan production readiness improvements
 
 ## Reference
 
-- Kubernetes manifests: `kubernetes/`
-- Deployment scripts: `scripts/`
-- Troubleshooting: `docs/troubleshooting.md`
-- Project plan: `project-plan.md`
+- **Project Plan:** `project-plan.md`
+- **Phase 3 Migration Guide:** `docs/gateway-api-migration.md`
+- **Gateway API Resources:** `kubernetes/08-gateway-api/README.md`
+- **Troubleshooting:** `docs/troubleshooting.md`
+- **Kubernetes Manifests:** `kubernetes/`
+- **Deployment Scripts:** `scripts/`
