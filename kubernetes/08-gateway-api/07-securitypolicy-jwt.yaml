@@ -1,5 +1,29 @@
 ---
 # Combined SecurityPolicy for Customer Route (JWT + External Authorization fetch)
+#
+# This policy enforces JWT authentication AND calls external authorization service
+# for role lookup on routes that require authentication.
+#
+# Header Flow:
+# 1. JWT Filter (Envoy) validates token and extracts claims → adds headers:
+#    - x-user-email (from 'email' claim)
+#    - x-user-name (from 'preferred_username' claim)
+#    - x-email-verified (from 'email_verified' claim)
+#
+# 2. headersToExtAuth: JWT-derived headers are sent to authz-service
+#    - authz-service receives: x-user-email, x-user-name, x-email-verified
+#    - authz-service looks up roles using email from Authorization header
+#    - authz-service returns ALL headers in response:
+#      * x-user-email (authoritative from JWT)
+#      * x-user-name (passed through)
+#      * x-email-verified (passed through)
+#      * x-user-roles (looked up from database)
+#
+# 3. headersToBackend: Specified headers from authz response forwarded to upstream
+#    - Backend services receive complete user context
+#    - Backend services use shared.auth.get_current_user() to extract user info
+#
+# Note: All authenticated users MUST have valid JWT tokens. No guest access on these routes.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
@@ -9,8 +33,8 @@ metadata:
     app: api-gateway
     phase: phase3
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: customer-route
   jwt:
@@ -19,6 +43,7 @@ spec:
       issuer: http://localhost:8180/realms/api-gateway-poc
       remoteJWKS:
         uri: http://keycloak.api-gateway-poc.svc.cluster.local:8180/realms/api-gateway-poc/protocol/openid-connect/certs
+        # cacheDuration: 300s (parsing error in Envoy Gateway v0.10.0 - removed for now)
       claimToHeaders:
       - claim: email
         header: x-user-email
@@ -32,9 +57,27 @@ spec:
       - name: authz-service
         port: 9000
       path: /authz/roles
+      # Headers from authz-service response to forward to backend services
+      headersToBackend:
+      - x-user-email         # User email (authoritative from JWT)
+      - x-user-name          # Username (from JWT preferred_username)
+      - x-email-verified     # Email verification status (from JWT)
+      - x-user-roles         # User roles (from authz-service database lookup)
+    # JWT-derived headers to send to authz-service
+    headersToExtAuth:
+    - x-user-email
+    - x-user-name
+    - x-email-verified
 
 ---
 # Combined SecurityPolicy for Auth-Me Route (JWT + External Authorization fetch)
+#
+# This policy enforces JWT authentication AND calls external authorization service
+# for role lookup on the /auth/me endpoint (used by React UI).
+#
+# Header Flow: Same as customer-securitypolicy (see above)
+#
+# Note: All authenticated users MUST have valid JWT tokens. No guest access on this route.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
@@ -44,8 +87,8 @@ metadata:
     app: api-gateway
     phase: phase3
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: auth-me-route
   jwt:
@@ -54,6 +97,7 @@ spec:
       issuer: http://localhost:8180/realms/api-gateway-poc
       remoteJWKS:
         uri: http://keycloak.api-gateway-poc.svc.cluster.local:8180/realms/api-gateway-poc/protocol/openid-connect/certs
+        # cacheDuration: 300s (parsing error in Envoy Gateway v0.10.0 - removed for now)
       claimToHeaders:
       - claim: email
         header: x-user-email
@@ -67,3 +111,14 @@ spec:
       - name: authz-service
         port: 9000
       path: /authz/roles
+      # Headers from authz-service response to forward to backend services
+      headersToBackend:
+      - x-user-email         # User email (authoritative from JWT)
+      - x-user-name          # Username (from JWT preferred_username)
+      - x-email-verified     # Email verification status (from JWT)
+      - x-user-roles         # User roles (from authz-service database lookup)
+    # JWT-derived headers to send to authz-service
+    headersToExtAuth:
+    - x-user-email
+    - x-user-name
+    - x-email-verified

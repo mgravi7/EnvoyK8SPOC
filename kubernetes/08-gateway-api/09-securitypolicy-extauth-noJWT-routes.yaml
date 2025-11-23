@@ -1,7 +1,33 @@
 ---
-# SecurityPolicy for External Authorization on routes that do not require JWT
-# This applies external authorization (role lookup) so backends receive x-user-roles
-# Envoy Gateway automatically forwards all response headers from ext_authz to upstream
+# SecurityPolicy for External Authorization on routes that do NOT require JWT
+#
+# This policy applies external authorization (role lookup) to routes that support
+# OPTIONAL authentication - guests are allowed, but authenticated users get enhanced access.
+#
+# Header Flow for GUEST users (no JWT):
+# 1. No JWT token → no JWT filter processing
+# 2. ExtAuth calls authz-service with empty headers
+# 3. authz-service returns:
+#    - x-user-email: "" (empty)
+#    - x-user-name: "" (empty)
+#    - x-email-verified: "" (empty)
+#    - x-user-roles: "guest"
+# 4. Backend receives all headers, treats user as guest
+#
+# Header Flow for AUTHENTICATED users (optional JWT present):
+# 1. If Authorization header present, it's passed to authz-service
+#    (Note: JWT filter is NOT active on these routes, so no claimToHeaders extraction)
+# 2. authz-service decodes JWT from Authorization header
+# 3. authz-service returns:
+#    - x-user-email: user@example.com (from JWT)
+#    - x-user-name: username (from JWT)
+#    - x-email-verified: "true"/"false" (from JWT)
+#    - x-user-roles: user,customer-manager (from database)
+# 4. Backend receives all headers, treats user as authenticated
+#
+# Note: authz-service handles JWT decoding internally when Authorization header is present.
+#       The JWT filter is NOT applied to these routes (no JWT validation by Envoy).
+#       Backend services use shared.auth.get_current_user() to extract user info.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
@@ -11,8 +37,8 @@ metadata:
     app: api-gateway
     phase: phase3
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
+  targetRefs:
+  - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: product-route
   extAuth:
@@ -21,3 +47,10 @@ spec:
       - name: authz-service
         port: 9000
       path: /authz/roles
+      # Headers from authz-service response to forward to backend services
+      # Note: For guest users, email/name/verified will be empty; only roles="guest"
+      headersToBackend:
+      - x-user-email         # User email (from JWT if present, empty for guests)
+      - x-user-name          # Username (from JWT if present, empty for guests)
+      - x-email-verified     # Email verification status (from JWT if present, empty for guests)
+      - x-user-roles         # User roles (from authz-service: "guest" or actual roles)

@@ -237,7 +237,7 @@ async def get_user_roles_endpoint(request: Request, path: Optional[str] = None):
         x-email-verified: true/false (from JWT, optional)
 
     Response Headers (200 OK, HTTP/2 lowercase):
-        x-user-email: user@example.com
+        x-user-email: user@example.com (passed through from JWT)
         x-user-roles: user,customer-manager (comma-separated, NO spaces or whitespace)
         x-user-name: username (passed through from JWT)
         x-email-verified: true/false (passed through from JWT)
@@ -293,9 +293,6 @@ async def get_user_roles_endpoint(request: Request, path: Optional[str] = None):
         # Lookup roles for authenticated user (cache handled by data layer)
         # Use email from Authorization header for role lookup (source of truth)
         roles = lookup_user_roles(email, request_id)
-        
-        # Override email in response with authoritative email from JWT token
-        response_headers["x-user-email"] = email
         
         if not roles:
             logger.info(f"[{request_id}] No roles found for {email}. Returning role 'unverified-user'.")
