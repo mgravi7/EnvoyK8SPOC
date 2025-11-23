@@ -124,7 +124,8 @@ if ($phase2Envoy) {
 if ($phase3Gateway) {
     Write-Host ""
     Write-Host "Gateway Envoy Proxy logs (last 10 lines) - Phase 3:" -ForegroundColor Cyan
-    kubectl logs -n $Namespace -l gateway.envoyproxy.io/owning-gateway-name=api-gateway --tail=10 2>$null
+    # Envoy Gateway deploys the proxy in envoy-gateway-system namespace
+    kubectl logs -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=api-gateway" --tail=10 2>$null
     if ($LASTEXITCODE -ne 0) { Write-Host "No logs available" }
 }
 
@@ -140,9 +141,9 @@ Write-Host "Deployment Phase: $deploymentPhase" -ForegroundColor White
 Write-Host "Pods running: $runningPods / $totalPods" -ForegroundColor White
 
 if ($runningPods -eq $totalPods -and $totalPods -gt 0) {
-    Write-Host "Status: ✓ All pods are running!" -ForegroundColor Green
+    Write-Host "Status: All pods are running!" -ForegroundColor Green
 } else {
-    Write-Host "Status: ✗ Some pods are not running. Check logs above." -ForegroundColor Red
+    Write-Host "Status: Some pods are not running. Check logs above." -ForegroundColor Red
 }
 
 Write-Host ""

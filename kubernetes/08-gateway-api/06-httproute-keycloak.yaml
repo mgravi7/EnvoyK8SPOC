@@ -14,8 +14,6 @@ spec:
   parentRefs:
   - name: api-gateway
     namespace: api-gateway-poc
-  hostnames:
-  - "*"  # Accept all hostnames (for local development)
   rules:
   - matches:
     - path:

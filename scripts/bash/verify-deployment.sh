@@ -118,7 +118,8 @@ fi
 if [ -n "$PHASE3_GATEWAY" ]; then
   echo ""
   echo "Gateway Envoy Proxy logs (last 10 lines) - Phase 3:"
-  kubectl logs -n $NAMESPACE -l gateway.envoyproxy.io/owning-gateway-name=api-gateway --tail=10 2>/dev/null || echo "No logs available"
+  # Envoy Gateway deploys the proxy in envoy-gateway-system namespace
+  kubectl logs -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=api-gateway" --tail=10 2>/dev/null || echo "No logs available"
 fi
 
 echo ""

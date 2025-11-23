@@ -83,7 +83,7 @@ try {
     Write-Host "Warning: Envoy Gateway deployment is not ready. Continuing anyway..." -ForegroundColor Yellow
 }
 
-Write-Host "✓ Envoy Gateway is installed" -ForegroundColor Green
+Write-Host "Envoy Gateway is installed" -ForegroundColor Green
 
 # Check if Phase 2 Envoy is running
 $phase2Envoy = kubectl get deployment envoy -n api-gateway-poc --ignore-not-found=true 2>$null

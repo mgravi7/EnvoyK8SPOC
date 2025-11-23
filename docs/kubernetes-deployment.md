@@ -180,6 +180,96 @@ redis-xxx                          1/1     Running   0          4m
 
 Phase 3 uses Kubernetes Gateway API with Envoy Gateway operator for declarative, Kubernetes-native configuration.
 
+### Phase 3 Architecture
+
+Phase 3 introduces a separation between the **control plane** (Envoy Gateway controller) and the **data plane** (Envoy proxy) using dedicated namespaces for better isolation and management.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                 Envoy Gateway Architecture (Phase 3)              │
+└──────────────────────────────────────────────────────────────────┘
+
+Namespace: envoy-gateway-system
+┌────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│  Control Plane:                                                 │
+│  └─ envoy-gateway (controller)                                 │
+│     - Watches Gateway API resources                             │
+│     - Generates Envoy configuration dynamically                 │
+│     - Manages data plane lifecycle                              │
+│                                                                  │
+│  Data Plane:                                                    │
+│  └─ envoy-api-gateway-poc-api-gateway-xxxxxx (proxy pod)       │
+│     ├─ Envoy proxy containers (2/2 running)                    │
+│     ├─ LoadBalancer Service (localhost:8080)                   │
+│     └─ Automatically created & managed by Envoy Gateway        │
+│                                                                  │
+└────────────────────────────────────────────────────────────────┘
+                           ▲
+                           │ watches & manages
+                           │
+Namespace: api-gateway-poc
+┌────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│  Gateway API Resources (declarative config):                    │
+│  ├─ GatewayClass (envoy-gateway)                               │
+│  ├─ Gateway (api-gateway) - defines listeners                  │
+│  ├─ HTTPRoutes - define routing rules                          │
+│  │  ├─ customer-route   → customer-service                     │
+│  │  ├─ product-route    → product-service                      │
+│  │  ├─ auth-me-route    → authz-service                        │
+│  │  └─ keycloak-route   → keycloak                             │
+│  └─ SecurityPolicies - define auth & security                  │
+│     ├─ jwt-authentication (JWT validation)                      │
+│     └─ external-authorization (RBAC checks)                     │
+│                                                                  │
+│  Application Workloads (backend services):                      │
+│  ├─ customer-service (Deployment + Service)                    │
+│  ├─ product-service  (Deployment + Service)                    │
+│  ├─ authz-service    (Deployment + Service)                    │
+│  ├─ keycloak         (Deployment + LoadBalancer Service)       │
+│  └─ redis            (Deployment + Service + PVC)              │
+│                                                                  │
+└────────────────────────────────────────────────────────────────┘
+
+Traffic Flow:
+  Client Request → Gateway Service (envoy-gateway-system:8080)
+                → Envoy Proxy (applies HTTPRoute rules + SecurityPolicies)
+                → Backend Service (api-gateway-poc)
+                → Response
+```
+
+**Key Benefits of This Architecture:**
+
+1. **Separation of Concerns:**
+   - Control plane manages configuration
+   - Data plane handles traffic
+   - Application workloads are isolated
+
+2. **Dynamic Configuration:**
+   - Changes to HTTPRoutes/SecurityPolicies are applied without pod restarts
+   - Envoy Gateway automatically updates Envoy proxy configuration
+
+3. **Namespace Isolation:**
+   - `envoy-gateway-system`: Infrastructure components
+   - `api-gateway-poc`: Application-specific resources
+
+4. **Multi-Gateway Support:**
+   - Single Envoy Gateway controller can manage multiple Gateways
+   - Each Gateway gets its own Envoy proxy deployment
+
+**Why Data Plane is in `envoy-gateway-system`:**
+
+By default, Envoy Gateway deploys the data plane (Envoy proxy pods) in the same namespace as the control plane (`envoy-gateway-system`). This is intentional for:
+- **Centralized management:** All infrastructure in one namespace
+- **Security isolation:** Gateway operator has full control over proxy lifecycle
+- **Multi-tenant support:** Multiple applications can have Gateways without namespace conflicts
+
+**Note:** While the Envoy proxy pod runs in `envoy-gateway-system`, it is logically owned by the Gateway resource in `api-gateway-poc` and is visible via labels:
+```bash
+kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
+```
+
 ### Quick Start Phase 3
 
 **1. Install Envoy Gateway (one-time):**

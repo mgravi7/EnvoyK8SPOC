@@ -1,7 +1,7 @@
 ---
 # SecurityPolicy for External Authorization (RBAC)
-# Applies external authz check at the Gateway level for protected routes
-# This replaces Phase 2's Envoy ext_authz filter configuration
+# Applies external authz check to specific HTTPRoutes (not Gateway level)
+# This allows us to exclude routes that don't need authz
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
@@ -13,24 +13,32 @@ metadata:
 spec:
   targetRef:
     group: gateway.networking.k8s.io
-    kind: Gateway
-    name: api-gateway
-    namespace: api-gateway-poc
+    kind: HTTPRoute
+    name: customer-route
   extAuth:
     http:
-      # External authorization service endpoint
-      service: authz-service.api-gateway-poc.svc.cluster.local
-      port: 9000
+      backendRefs:
+      - name: authz-service
+        port: 9000
       path: /authz/roles
-      # Headers to send to the authorization service
-      headersToExtAuth:
-      - authorization
-      - x-request-id
-      - x-user-email
-      - x-user-name
-      # Headers to forward from the authorization service to upstream
-      headersToUpstream:
-      - x-user-email
-      - x-user-roles
-      # Fail closed - deny access if authz service is unavailable
-      failOpen: false
+---
+# SecurityPolicy for External Authorization on auth-me route
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: external-authorization-auth-me
+  namespace: api-gateway-poc
+  labels:
+    app: api-gateway
+    phase: phase3
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: auth-me-route
+  extAuth:
+    http:
+      backendRefs:
+      - name: authz-service
+        port: 9000
+      path: /authz/roles
