@@ -1,8 +1,10 @@
 ---
-# Combined SecurityPolicy for Customer Route (JWT + External Authorization fetch)
+# Combined SecurityPolicy for JWT-required Routes (Customer + Auth-Me)
 #
 # This policy enforces JWT authentication AND calls external authorization service
 # for role lookup on routes that require authentication.
+#
+# Applied to multiple routes: customer-route, auth-me-route
 #
 # Header Flow:
 # 1. JWT Filter (Envoy) validates token and extracts claims → adds headers:
@@ -27,7 +29,7 @@
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
-  name: customer-securitypolicy
+  name: jwt-required-routes-securitypolicy
   namespace: api-gateway-poc
   labels:
     app: api-gateway
@@ -37,57 +39,6 @@ spec:
   - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: customer-route
-  jwt:
-    providers:
-    - name: keycloak-provider
-      issuer: http://localhost:8180/realms/api-gateway-poc
-      remoteJWKS:
-        uri: http://keycloak.api-gateway-poc.svc.cluster.local:8180/realms/api-gateway-poc/protocol/openid-connect/certs
-        # cacheDuration: 300s (parsing error in Envoy Gateway v0.10.0 - removed for now)
-      claimToHeaders:
-      - claim: email
-        header: x-user-email
-      - claim: preferred_username
-        header: x-user-name
-      - claim: email_verified
-        header: x-email-verified
-  extAuth:
-    http:
-      backendRefs:
-      - name: authz-service
-        port: 9000
-      path: /authz/roles
-      # Headers from authz-service response to forward to backend services
-      headersToBackend:
-      - x-user-email         # User email (authoritative from JWT)
-      - x-user-name          # Username (from JWT preferred_username)
-      - x-email-verified     # Email verification status (from JWT)
-      - x-user-roles         # User roles (from authz-service database lookup)
-    # JWT-derived headers to send to authz-service
-    headersToExtAuth:
-    - x-user-email
-    - x-user-name
-    - x-email-verified
-
----
-# Combined SecurityPolicy for Auth-Me Route (JWT + External Authorization fetch)
-#
-# This policy enforces JWT authentication AND calls external authorization service
-# for role lookup on the /auth/me endpoint (used by React UI).
-#
-# Header Flow: Same as customer-securitypolicy (see above)
-#
-# Note: All authenticated users MUST have valid JWT tokens. No guest access on this route.
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: SecurityPolicy
-metadata:
-  name: authme-securitypolicy
-  namespace: api-gateway-poc
-  labels:
-    app: api-gateway
-    phase: phase3
-spec:
-  targetRefs:
   - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: auth-me-route
