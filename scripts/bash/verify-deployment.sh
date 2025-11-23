@@ -35,7 +35,7 @@ kubectl get pods -n $NAMESPACE -o wide
 echo ""
 echo "3. Checking pod status details..."
 not_running=0
-kubectl get pods -n $NAMESPACE --no-headers | while read -r line; do
+while read -r line; do
   pod=$(echo "$line" | awk '{print $1}')
   status=$(kubectl get pod $pod -n $NAMESPACE -o jsonpath='{.status.phase}')
   if [ "$status" != "Running" ]; then
@@ -44,7 +44,7 @@ kubectl get pods -n $NAMESPACE --no-headers | while read -r line; do
     echo "Recent events:"
     kubectl describe pod $pod -n $NAMESPACE | tail -20
   fi
-done
+done < <(kubectl get pods -n $NAMESPACE --no-headers)
 if [ "$not_running" -eq 0 ]; then
   echo "All pods are Running."
 fi
