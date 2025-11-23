@@ -32,8 +32,8 @@ kubectl get pods -n $Namespace -o wide
 
 Write-Host ""
 Write-Host "3. Checking pod status details..." -ForegroundColor Yellow
-$pods = kubectl get pods -n $Namespace --no-headers 2>$null | ForEach-Object { ($_ -split '\s+')[0] }
 $notRunningCount = 0
+$pods = kubectl get pods -n $Namespace --no-headers 2>$null | ForEach-Object { ($_ -split '\s+')[0] }
 foreach ($pod in $pods) {
     $status = kubectl get pod $pod -n $Namespace -o jsonpath='{.status.phase}' 2>$null
     if ($status -ne "Running") {
