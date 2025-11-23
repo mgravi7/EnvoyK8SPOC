@@ -8,6 +8,26 @@ echo "================================"
 echo "Testing Service Endpoints"
 echo "================================"
 
+# Detect which phase is deployed
+PHASE2_ENVOY=$(kubectl get deployment envoy -n api-gateway-poc --ignore-not-found=true 2>/dev/null)
+PHASE3_GATEWAY=$(kubectl get gateway -n api-gateway-poc --ignore-not-found=true 2>/dev/null)
+
+if [ -n "$PHASE3_GATEWAY" ]; then
+    DEPLOYMENT_PHASE="Phase 3 (Gateway API)"
+    GATEWAY_PORT=8080
+    ENVOY_ADMIN_AVAILABLE=false
+elif [ -n "$PHASE2_ENVOY" ]; then
+    DEPLOYMENT_PHASE="Phase 2 (Direct Envoy)"
+    GATEWAY_PORT=8080
+    ENVOY_ADMIN_AVAILABLE=true
+else
+    DEPLOYMENT_PHASE="Unknown (no gateway detected)"
+    echo "ERROR: No gateway deployment detected!"
+    exit 1
+fi
+
+echo "Detected: $DEPLOYMENT_PHASE"
+
 # Function to test endpoint
 test_endpoint() {
   local url=$1
@@ -34,33 +54,48 @@ sleep 5
 
 echo ""
 echo "Getting LoadBalancer IPs..."
-kubectl get svc -n api-gateway-poc envoy keycloak
+if [ -n "$PHASE2_ENVOY" ]; then
+    kubectl get svc -n api-gateway-poc envoy keycloak
+else
+    # Phase 3 - Gateway creates its own service in envoy-gateway-system
+    echo "Keycloak service:"
+    kubectl get svc keycloak -n api-gateway-poc
+    echo ""
+    echo "Gateway service (in envoy-gateway-system):"
+    kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway 2>/dev/null || {
+        echo "Note: Gateway service details not available via label selector"
+        echo "Gateway is accessible at http://localhost:$GATEWAY_PORT"
+    }
+fi
 
 echo ""
 echo "================================"
 echo "Testing Health Endpoints"
 echo "================================"
 
-# Test Envoy admin
-test_endpoint "http://localhost:9901/ready" "Envoy Admin - Ready"
+# Test Envoy admin (Phase 2 only)
+if [ "$ENVOY_ADMIN_AVAILABLE" = true ]; then
+    test_endpoint "http://localhost:9901/ready" "Envoy Admin - Ready (Phase 2)"
+else
+    echo ""
+    echo "Envoy Admin endpoint not available in Phase 3 (managed by Envoy Gateway)"
+fi
 
 # Test Keycloak health
 test_endpoint "http://localhost:9000/health/ready" "Keycloak Health (Management Port)"
 
 echo ""
 echo "================================"
-echo "Testing Service Endpoints (via Envoy)"
+echo "Testing Service Endpoints (via Gateway)"
 echo "================================"
 
-# Note: These will fail without authentication
-# We're just checking if Envoy routes to the services
-
 echo ""
-echo "Note: Customer and Product endpoints require JWT authentication"
-echo "These tests check if Envoy is routing (expect 401 Unauthorized)"
+echo "Note: Customer endpoint requires JWT authentication"
+echo "      Product endpoint allows anonymous access"
+echo "These tests check if the Gateway is routing correctly"
 
-test_endpoint "http://localhost:8080/customers" "Customer Service (via Envoy - should be 401)" "401"
-test_endpoint "http://localhost:8080/products" "Product Service (via Envoy)" "200"
+test_endpoint "http://localhost:$GATEWAY_PORT/customers" "Customer Service (via Gateway - should be 401)" "401"
+test_endpoint "http://localhost:$GATEWAY_PORT/products" "Product Service (via Gateway - anonymous access)" "200"
 
 echo ""
 echo "================================"
@@ -86,7 +121,7 @@ if echo "$TOKEN_RESPONSE" | grep -q "access_token"; then
   echo "Testing authenticated request to customer service..."
   AUTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
     -H "Authorization: Bearer $TOKEN" \
-    "http://localhost:8080/customers")
+    "http://localhost:$GATEWAY_PORT/customers")
   
   if [ "$AUTH_RESPONSE" = "200" ]; then
     echo "Result: PASS - Authenticated request successful (HTTP $AUTH_RESPONSE)"
@@ -103,11 +138,13 @@ echo "================================"
 echo "Endpoint Testing Complete"
 echo "================================"
 echo ""
+echo "Deployment Phase: $DEPLOYMENT_PHASE"
+echo ""
 echo "For manual testing:"
 echo "1. Access Keycloak admin: http://localhost:8180 (admin/admin)"
 echo "2. Get token: See scripts/bash/test-endpoints.sh for example"
-echo "3. Test APIs: curl -H \"Authorization: Bearer \$TOKEN\" http://localhost:8080/customers"
+echo "3. Test APIs: curl -H \"Authorization: Bearer \$TOKEN\" http://localhost:$GATEWAY_PORT/customers"
 echo ""
 echo "To run integration tests:"
-echo "1. Update tests/integration/conftest.py GATEWAY_BASE_URL to http://localhost:8080"
+echo "1. Update tests/integration/conftest.py GATEWAY_BASE_URL to http://localhost:$GATEWAY_PORT"
 echo "2. Run: pytest tests/integration/"

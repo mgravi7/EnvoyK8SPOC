@@ -225,15 +225,22 @@ async def get_user_roles_endpoint(request: Request, path: Optional[str] = None):
     correctly with ext_authz filter.
 
     Extracts user email from JWT token and returns roles in response headers.
+    Also passes through JWT-derived headers (x-user-email, x-user-name, x-email-verified)
+    so they can be forwarded to backend services.
     This endpoint is only called by Envoy after JWT validation.
 
     Request Headers:
         authorization: Bearer <jwt-token> (validated by Envoy)
         x-request-id: <uuid> (optional, for request tracing)
+        x-user-email: user@example.com (from JWT, optional)
+        x-user-name: username (from JWT, optional)
+        x-email-verified: true/false (from JWT, optional)
 
     Response Headers (200 OK, HTTP/2 lowercase):
-        x-user-email: user@example.com
+        x-user-email: user@example.com (passed through from JWT)
         x-user-roles: user,customer-manager (comma-separated, NO spaces or whitespace)
+        x-user-name: username (passed through from JWT)
+        x-email-verified: true/false (passed through from JWT)
 
     Note: Role names must contain only printable characters (no whitespace).
           Multiple roles are returned as a comma-separated list with NO spaces
@@ -258,42 +265,56 @@ async def get_user_roles_endpoint(request: Request, path: Optional[str] = None):
         logger.info(f"[{request_id}] AuthZ role lookup request ({request.method}) received")
 
     try:
+        # Extract JWT-derived headers to pass through to backend
+        jwt_email = request.headers.get("x-user-email", "")
+        jwt_name = request.headers.get("x-user-name", "")
+        jwt_email_verified = request.headers.get("x-email-verified", "")
+        
         # Extract email from request (returns None if no valid JWT)
         email = extract_email_from_authorization_header(request, request_id)
+
+        # Build response headers (always include JWT-derived headers for passthrough)
+        response_headers = {
+            "x-user-email": jwt_email,
+            "x-user-name": jwt_name,
+            "x-email-verified": jwt_email_verified
+        }
 
         # If no valid JWT, return guest role
         if not email:
             logger.info(f"[{request_id}] Returning role 'guest'.")
+            response_headers["x-user-roles"] = "guest"
             return Response(
                 status_code=200,
                 content="",
-                headers={
-                    "x-user-email": "",
-                    "x-user-roles": "guest"
-                }
+                headers=response_headers
             )
 
         # Lookup roles for authenticated user (cache handled by data layer)
+        # Use email from Authorization header for role lookup (source of truth)
         roles = lookup_user_roles(email, request_id)
+        
         if not roles:
             logger.info(f"[{request_id}] No roles found for {email}. Returning role 'unverified-user'.")
+            # Check if email is verified from JWT claim
+            if jwt_email_verified.lower() == "true":
+                response_headers["x-user-roles"] = "verified-user"
+                logger.info(f"[{request_id}] Email verified but no roles. Returning 'verified-user'.")
+            else:
+                response_headers["x-user-roles"] = "unverified-user"
             return Response(
                 status_code=200,
                 content="",
-                headers={
-                    "x-user-email": email,
-                    "x-user-roles": "unverified-user"
-                }
+                headers=response_headers
             )
+        
         roles_str = ",".join(roles)
+        response_headers["x-user-roles"] = roles_str
         logger.info(f"[{request_id}] Roles found for {email}: {roles}")
         return Response(
             status_code=200,
             content="",
-            headers={
-                "x-user-email": email,
-                "x-user-roles": roles_str
-            }
+            headers=response_headers
         )
     except Exception as e:
         logger.error(f"[{request_id}] Unexpected authorization error: {e}", exc_info=True)

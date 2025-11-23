@@ -40,7 +40,7 @@ spec:
           httpGet:
             path: /products/health
             port: 8000
-          initialDelaySeconds: 5
+          initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3

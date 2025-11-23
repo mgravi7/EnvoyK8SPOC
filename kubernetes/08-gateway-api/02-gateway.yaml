@@ -1,0 +1,22 @@
+---
+# Gateway resource - replaces Phase 2 Envoy Deployment
+# This creates the actual gateway proxy that handles incoming traffic
+# Envoy Gateway will automatically create Deployment, Service, and ConfigMap
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: api-gateway
+  namespace: api-gateway-poc
+  labels:
+    app: api-gateway
+    phase: phase3
+spec:
+  gatewayClassName: envoy-gateway
+  listeners:
+  # Main HTTP listener for application traffic
+  - name: http
+    protocol: HTTP
+    port: 8080
+    allowedRoutes:
+      namespaces:
+        from: Same
