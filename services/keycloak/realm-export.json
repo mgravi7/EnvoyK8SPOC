@@ -93,7 +93,7 @@
     {
       "username": "testuser-unvrfd",
       "enabled": true,
-      "emailVerified": true,
+      "emailVerified": false,
       "email": "test.user-unvrfd@example.com",
       "firstName": "Test",
       "lastName": "User-unvrfd",

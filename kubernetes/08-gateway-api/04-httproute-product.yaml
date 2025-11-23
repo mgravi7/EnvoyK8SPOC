@@ -1,7 +1,6 @@
 ---
 # HTTPRoute for Product Service
 # Routes /products/* to product-service
-# Requires JWT authentication and external authorization
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

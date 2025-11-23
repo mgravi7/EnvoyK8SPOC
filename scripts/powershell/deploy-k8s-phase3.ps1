@@ -37,13 +37,22 @@ function Wait-ForGateway {
     
     Write-Host "Waiting for gateway/$Gateway to be ready..." -ForegroundColor Yellow
     $timeoutEnd = (Get-Date).AddSeconds($Timeout)
-    
     while ((Get-Date) -lt $timeoutEnd) {
         try {
-            $status = kubectl get gateway $Gateway -n $Namespace -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' 2>$null
+            $status = kubectl get gateway $Gateway -n $Namespace -o jsonpath="{.status.conditions[?(@.type=='Programmed')].status}" 2>$null
             if ($status -eq "True") {
                 Write-Host "Gateway $Gateway is ready!" -ForegroundColor Green
                 return $true
+            }
+            # Also check if Envoy proxy pod is Ready in envoy-gateway-system
+            try {
+                $proxyReady = kubectl get pods -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=$Gateway" -o jsonpath='{.items[*].status.containerStatuses[*].ready}' 2>$null
+                if ($proxyReady -match 'true') {
+                    Write-Host "Envoy proxy pod for $Gateway is ready!" -ForegroundColor Green
+                    return $true
+                }
+            } catch {
+                # ignore
             }
             Write-Host "Gateway status: $status - waiting..." -ForegroundColor Yellow
         } catch {
@@ -51,8 +60,61 @@ function Wait-ForGateway {
         }
         Start-Sleep -Seconds 5
     }
-    
     Write-Host "Warning: Gateway did not become ready within ${Timeout}s" -ForegroundColor Yellow
+    # Emit diagnostics
+    Write-Host "Gateway diagnostics: listing proxy pods and last 50 log lines" -ForegroundColor Yellow
+    kubectl get pods -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=$Gateway" -o wide 2>$null
+    # Suppress kubectl stderr messages by redirecting 2>&1 and filtering
+    $logs = kubectl logs -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=$Gateway" --tail=50 2>&1
+    $logs | Where-Object { $_ -notmatch "Defaulted container" } | ForEach-Object { Write-Host $_ }
+    return $false
+}
+
+# Function to wait for a service to have endpoints
+function Wait-ForServiceEndpoint {
+    param(
+        [string]$Namespace,
+        [string]$Service,
+        [int]$Timeout = 120
+    )
+    Write-Host "Waiting for service endpoint $Service in namespace $Namespace..." -ForegroundColor Yellow
+    $timeoutEnd = (Get-Date).AddSeconds($Timeout)
+    $attempt = 0
+    while ((Get-Date) -lt $timeoutEnd) {
+        $attempt++
+        # Try EndpointSlice first (preferred on newer clusters)
+        try {
+            $rawips = kubectl get endpointslices -n $Namespace -l "kubernetes.io/service-name=$Service" -o jsonpath="{.items[*].endpoints[*].addresses[*]}" 2>$null
+        } catch {
+            $rawips = $null
+        }
+        if (-not $rawips) {
+            # Fallback to legacy Endpoints
+            try {
+                $rawips = kubectl get endpoints $Service -n $Namespace -o jsonpath="{.subsets[*].addresses[*].ip}" 2>$null
+            } catch {
+                $rawips = $null
+            }
+        }
+
+        $ips = if ($rawips) { $rawips.ToString().Trim() } else { "" }
+        Write-Host "Attempt:$attempt, endpoints='$ips'" -ForegroundColor DarkGray
+
+        if (-not [string]::IsNullOrWhiteSpace($ips) -and $ips -match '\d+\.\d+\.\d+\.\d+') {
+            Write-Host "Service $Service has endpoints: $ips" -ForegroundColor Green
+            return $true
+        }
+
+        Start-Sleep -Seconds 5
+    }
+
+    Write-Host "Warning: Service $Service did not have endpoints within ${Timeout}s" -ForegroundColor Yellow
+    Write-Host "Diagnostics: endpoints and endpointSlices:" -ForegroundColor Yellow
+    kubectl get endpoints $Service -n $Namespace -o yaml 2>&1 | ForEach-Object { Write-Host $_ }
+    kubectl get endpointslices -n $Namespace -l "kubernetes.io/service-name=$Service" -o yaml 2>&1 | ForEach-Object { Write-Host $_ }
+    kubectl describe pod -l app=keycloak -n $Namespace 2>&1 | ForEach-Object { Write-Host $_ }
+    kubectl get events -n $Namespace --sort-by='.lastTimestamp' | Select-Object -Last 50 | ForEach-Object { Write-Host $_ }
+
     return $false
 }
 
@@ -134,7 +196,7 @@ Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "Step 5: Deploying Keycloak" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 kubectl apply -f (Join-Path $K8sDir "04-iam")
-Write-Host "Note: Keycloak takes ~90 seconds to start. Waiting..." -ForegroundColor Yellow
+Write-Host "Note: Keycloak takes ~20 seconds to start. Waiting..." -ForegroundColor Yellow
 Wait-ForDeployment -Namespace "api-gateway-poc" -Deployment "keycloak" -Timeout 180
 
 Write-Host ""
@@ -162,7 +224,7 @@ kubectl apply -f (Join-Path $K8sDir "08-gateway-api\01-gatewayclass.yaml")
 
 Write-Host "Creating Gateway..." -ForegroundColor Yellow
 kubectl apply -f (Join-Path $K8sDir "08-gateway-api\02-gateway.yaml")
-Wait-ForGateway -Namespace "api-gateway-poc" -Gateway "api-gateway" -Timeout 180
+Wait-ForGateway -Namespace "api-gateway-poc" -Gateway "api-gateway" -Timeout 300
 
 Write-Host "Creating HTTPRoutes..." -ForegroundColor Yellow
 kubectl apply -f (Join-Path $K8sDir "08-gateway-api\03-httproute-customer.yaml")
@@ -170,9 +232,18 @@ kubectl apply -f (Join-Path $K8sDir "08-gateway-api\04-httproute-product.yaml")
 kubectl apply -f (Join-Path $K8sDir "08-gateway-api\05-httproute-auth-me.yaml")
 kubectl apply -f (Join-Path $K8sDir "08-gateway-api\06-httproute-keycloak.yaml")
 
+# Ensure Keycloak service endpoints exist before applying SecurityPolicies (prevents JWKS race)
+$endpointsReady = Wait-ForServiceEndpoint -Namespace "api-gateway-poc" -Service "keycloak" -Timeout 120
+if (-not $endpointsReady) {
+    Write-Host "Warning: Keycloak endpoints not ready; attempting to apply SecurityPolicies anyway (may cause JWKS fetch warnings)." -ForegroundColor Yellow
+}
+
 Write-Host "Applying Security Policies..." -ForegroundColor Yellow
 kubectl apply -f (Join-Path $K8sDir "08-gateway-api\07-securitypolicy-jwt.yaml")
-kubectl apply -f (Join-Path $K8sDir "08-gateway-api\08-securitypolicy-extauth.yaml")
+# Apply extAuth policy for routes that are public (no JWT) so backends receive x-user-roles
+kubectl apply -f (Join-Path $K8sDir "08-gateway-api\09-securitypolicy-extauth-noJWT-routes.yaml")
+# Note: external-authorization policies were merged into combined policies; do not apply the old extauth file
+# kubectl apply -f (Join-Path $K8sDir "08-gateway-api\08-securitypolicy-extauth.yaml")
 
 Write-Host ""
 Write-Host "================================" -ForegroundColor Green

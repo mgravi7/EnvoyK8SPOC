@@ -34,14 +34,20 @@ kubectl get pods -n $NAMESPACE -o wide
 
 echo ""
 echo "3. Checking pod status details..."
-kubectl get pods -n $NAMESPACE --no-headers | while read pod rest; do
+not_running=0
+kubectl get pods -n $NAMESPACE --no-headers | while read -r line; do
+  pod=$(echo "$line" | awk '{print $1}')
   status=$(kubectl get pod $pod -n $NAMESPACE -o jsonpath='{.status.phase}')
   if [ "$status" != "Running" ]; then
+    not_running=$((not_running+1))
     echo "WARNING: Pod $pod is in $status state"
     echo "Recent events:"
     kubectl describe pod $pod -n $NAMESPACE | tail -20
   fi
 done
+if [ "$not_running" -eq 0 ]; then
+  echo "All pods are Running."
+fi
 
 echo ""
 echo "4. Checking services..."
@@ -49,7 +55,14 @@ kubectl get svc -n $NAMESPACE
 
 echo ""
 echo "5. Checking endpoints..."
-kubectl get endpoints -n $NAMESPACE
+# Prefer EndpointSlices; fallback to Endpoints
+if kubectl get endpointslices -n $NAMESPACE &>/dev/null; then
+  echo "EndpointSlices:"
+  kubectl get endpointslices -n $NAMESPACE -o wide
+else
+  echo "(EndpointSlices not available; showing Endpoints)"
+  kubectl get endpoints -n $NAMESPACE 2>&1 | grep -v "Warning: v1 Endpoints is deprecated" || true
+fi
 
 echo ""
 echo "6. Checking ConfigMaps..."
@@ -119,7 +132,12 @@ if [ -n "$PHASE3_GATEWAY" ]; then
   echo ""
   echo "Gateway Envoy Proxy logs (last 10 lines) - Phase 3:"
   # Envoy Gateway deploys the proxy in envoy-gateway-system namespace
-  kubectl logs -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=api-gateway" --tail=10 2>/dev/null || echo "No logs available"
+  proxy_pods=$(kubectl get pods -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=api-gateway" --no-headers 2>/dev/null | awk '{print $1}')
+  if [ -z "$proxy_pods" ]; then
+    echo "No Envoy proxy pods found in envoy-gateway-system"
+  else
+    kubectl logs -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=api-gateway" -c envoy --tail=10 2>/dev/null || echo "No logs available"
+  fi
 fi
 
 echo ""
@@ -144,7 +162,8 @@ echo "Useful commands:"
 echo "  kubectl describe pod <pod-name> -n $NAMESPACE"
 echo "  kubectl logs -f deployment/<deployment-name> -n $NAMESPACE"
 
+echo "If Phase 3 Gateway is deployed, use the following:"
 if [ -n "$PHASE3_GATEWAY" ]; then
   echo "  kubectl describe gateway api-gateway -n $NAMESPACE"
-  echo "  kubectl logs -n $NAMESPACE -l gateway.envoyproxy.io/owning-gateway-name=api-gateway"
+  echo "  kubectl logs -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway"
 fi

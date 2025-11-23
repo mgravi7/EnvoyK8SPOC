@@ -1,11 +1,9 @@
 ---
-# SecurityPolicy for JWT Authentication
-# Applies JWT validation to specific HTTPRoutes (not Gateway level)
-# This allows us to exclude routes like /products that need anonymous access
+# Combined SecurityPolicy for Customer Route (JWT + External Authorization fetch)
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
-  name: jwt-authentication
+  name: customer-securitypolicy
   namespace: api-gateway-poc
   labels:
     app: api-gateway
@@ -26,14 +24,21 @@ spec:
         header: x-user-email
       - claim: preferred_username
         header: x-user-name
-      - claim: realm_access.roles
-        header: x-jwt-roles
+      - claim: email_verified
+        header: x-email-verified
+  extAuth:
+    http:
+      backendRefs:
+      - name: authz-service
+        port: 9000
+      path: /authz/roles
+
 ---
-# SecurityPolicy for JWT Authentication on auth-me route
+# Combined SecurityPolicy for Auth-Me Route (JWT + External Authorization fetch)
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
-  name: jwt-authentication-auth-me
+  name: authme-securitypolicy
   namespace: api-gateway-poc
   labels:
     app: api-gateway
@@ -54,5 +59,11 @@ spec:
         header: x-user-email
       - claim: preferred_username
         header: x-user-name
-      - claim: realm_access.roles
-        header: x-jwt-roles
+      - claim: email_verified
+        header: x-email-verified
+  extAuth:
+    http:
+      backendRefs:
+      - name: authz-service
+        port: 9000
+      path: /authz/roles

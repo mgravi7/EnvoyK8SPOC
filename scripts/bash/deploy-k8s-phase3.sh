@@ -36,15 +36,60 @@ wait_for_gateway() {
   # Gateway readiness check
   timeout_end=$((SECONDS + timeout))
   while [ $SECONDS -lt $timeout_end ]; do
+    # NOTE: JSONPath expression uses double quotes inside and single quotes outside to
+    # avoid shell interpolation issues in `bash`. Do not change the quoting here unless
+    # you understand shell quoting rules.
     status=$(kubectl get gateway $gateway -n $namespace -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' 2>/dev/null || echo "Unknown")
     if [ "$status" = "True" ]; then
       echo "Gateway $gateway is ready!"
+      return 0
+    fi
+    # Also check envoy proxy pod readiness in envoy-gateway-system
+    proxy_ready=$(kubectl get pods -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=$gateway" -o jsonpath='{.items[*].status.containerStatuses[*].ready}' 2>/dev/null || echo "")
+    if [[ "$proxy_ready" =~ "true" ]]; then
+      echo "Envoy proxy pod for $gateway is ready!"
       return 0
     fi
     echo "Gateway status: $status - waiting..."
     sleep 5
   done
   echo "Warning: Gateway did not become ready within ${timeout}s"
+  echo "Gateway diagnostics: listing proxy pods and last 50 log lines"
+  kubectl get pods -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=$gateway" -o wide || true
+  kubectl logs -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=$gateway" --tail=50 2>&1 || true
+  return 1
+}
+
+# Function to wait for a service to have endpoints
+wait_for_service_endpoints() {
+  local namespace=$1
+  local service=$2
+  local timeout=${3:-120}
+  echo "Waiting for service endpoint $service in namespace $namespace..."
+  timeout_end=$((SECONDS + timeout))
+  attempt=0
+  while [ $SECONDS -lt $timeout_end ]; do
+    attempt=$((attempt+1))
+    # Try EndpointSlices first
+    ips=$(kubectl get endpointslices -n $namespace -l "kubernetes.io/service-name=$service" -o jsonpath='{.items[*].endpoints[*].addresses[*]}' 2>/dev/null || echo "")
+    if [ -z "$ips" ]; then
+      # Fallback to legacy Endpoints
+      ips=$(kubectl get endpoints $service -n $namespace -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || echo "")
+    fi
+    ips=$(echo "$ips" | xargs) # trim
+    echo "Attempt:$attempt, endpoints='$ips'"
+    if [[ "$ips" =~ [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+      echo "Service $service has endpoints: $ips"
+      return 0
+    fi
+    sleep 5
+  done
+  echo "Warning: Service $service did not have endpoints within ${timeout}s"
+  echo "Diagnostics: endpoints and endpointSlices" 
+  kubectl get endpoints $service -n $namespace -o yaml || true
+  kubectl get endpointslices -n $namespace -l "kubernetes.io/service-name=$service" -o yaml || true
+  kubectl describe pod -l app=keycloak -n $namespace || true
+  kubectl get events -n $namespace --sort-by='.lastTimestamp' | tail -n 50 || true
   return 1
 }
 
@@ -145,7 +190,6 @@ echo ""
 echo "=========================================="
 echo "Step 8: Deploying Gateway API Resources"
 echo "=========================================="
-
 echo "Creating GatewayClass..."
 kubectl apply -f "$K8S_DIR/08-gateway-api/01-gatewayclass.yaml"
 
@@ -159,9 +203,17 @@ kubectl apply -f "$K8S_DIR/08-gateway-api/04-httproute-product.yaml"
 kubectl apply -f "$K8S_DIR/08-gateway-api/05-httproute-auth-me.yaml"
 kubectl apply -f "$K8S_DIR/08-gateway-api/06-httproute-keycloak.yaml"
 
+# Ensure Keycloak service endpoints exist before applying SecurityPolicies (prevents JWKS race)
+if ! wait_for_service_endpoints api-gateway-poc keycloak 120; then
+  echo "Warning: Keycloak endpoints not ready; attempting to apply SecurityPolicies anyway (may cause JWKS fetch warnings)."
+fi
+
 echo "Applying Security Policies..."
 kubectl apply -f "$K8S_DIR/08-gateway-api/07-securitypolicy-jwt.yaml"
-kubectl apply -f "$K8S_DIR/08-gateway-api/08-securitypolicy-extauth.yaml"
+# Apply extAuth policy for public routes so backends receive x-user-roles (no JWT required)
+kubectl apply -f "$K8S_DIR/08-gateway-api/09-securitypolicy-extauth-noJWT-routes.yaml"
+# The old external-authorization file has been merged into the combined SecurityPolicy. Do not apply 08-securitypolicy-extauth.yaml
+# kubectl apply -f "$K8S_DIR/08-gateway-api/08-securitypolicy-extauth.yaml"
 
 echo ""
 echo "================================"

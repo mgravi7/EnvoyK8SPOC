@@ -33,13 +33,18 @@ kubectl get pods -n $Namespace -o wide
 Write-Host ""
 Write-Host "3. Checking pod status details..." -ForegroundColor Yellow
 $pods = kubectl get pods -n $Namespace --no-headers 2>$null | ForEach-Object { ($_ -split '\s+')[0] }
+$notRunningCount = 0
 foreach ($pod in $pods) {
     $status = kubectl get pod $pod -n $Namespace -o jsonpath='{.status.phase}' 2>$null
     if ($status -ne "Running") {
+        $notRunningCount++
         Write-Host "WARNING: Pod $pod is in $status state" -ForegroundColor Red
         Write-Host "Recent events:"
         kubectl describe pod $pod -n $Namespace | Select-Object -Last 20
     }
+}
+if ($notRunningCount -eq 0) {
+    Write-Host "All pods are Running." -ForegroundColor Green
 }
 
 Write-Host ""
@@ -48,7 +53,21 @@ kubectl get svc -n $Namespace
 
 Write-Host ""
 Write-Host "5. Checking endpoints..." -ForegroundColor Yellow
-kubectl get endpoints -n $Namespace
+# Prefer EndpointSlices (newer API); fall back to Endpoints for older clusters
+try {
+    $epSlices = kubectl get endpointslices -n $Namespace -o wide 2>$null
+    if ($epSlices) {
+        Write-Host "EndpointSlices:" -ForegroundColor Cyan
+        kubectl get endpointslices -n $Namespace -o wide
+    } else {
+        throw "no endpointslices"
+    }
+} catch {
+    Write-Host "(EndpointSlice not available; showing Endpoints)" -ForegroundColor Yellow
+    # Suppress kubectl deprecation warning by capturing stderr and filtering
+    $endpointsRaw = kubectl get endpoints -n $Namespace 2>&1 | Where-Object { $_ -notmatch "Warning: v1 Endpoints is deprecated" }
+    $endpointsRaw | ForEach-Object { Write-Host $_ }
+}
 
 Write-Host ""
 Write-Host "6. Checking ConfigMaps..." -ForegroundColor Yellow
@@ -123,10 +142,28 @@ if ($phase2Envoy) {
 
 if ($phase3Gateway) {
     Write-Host ""
-    Write-Host "Gateway Envoy Proxy logs (last 10 lines) - Phase 3:" -ForegroundColor Cyan
+    Write-Host "Gateway Envoy Proxy logs (last 50 lines) - Phase 3:" -ForegroundColor Cyan
     # Envoy Gateway deploys the proxy in envoy-gateway-system namespace
-    kubectl logs -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=api-gateway" --tail=10 2>$null
-    if ($LASTEXITCODE -ne 0) { Write-Host "No logs available" }
+    try {
+        # Ensure proxy pods exist first
+        $proxyPods = kubectl get pods -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=api-gateway" --no-headers 2>$null | ForEach-Object { ($_ -split '\s+')[0] }
+        if (-not $proxyPods) {
+            Write-Host "No Envoy proxy pods found in envoy-gateway-system" -ForegroundColor Yellow
+        } else {
+            # Request logs from the envoy container specifically to avoid "Defaulted container" messages
+            $proxyLogs = kubectl logs -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=api-gateway" -c envoy --tail=50 2>&1
+            if ($proxyLogs) {
+                $proxyLogs | ForEach-Object { Write-Host $_ }
+                if ($proxyLogs -match "jwks" -or $proxyLogs -match "JWKS" -or $proxyLogs -match "pubkey") {
+                    Write-Host "`nWARNING: JWKS fetch issues detected in Envoy logs. This usually means Keycloak service endpoints were not ready when SecurityPolicies were applied. Consider re-running the deploy or ensuring Keycloak endpoints are available before applying SecurityPolicies." -ForegroundColor Yellow
+                }
+            } else {
+                Write-Host "No logs available" -ForegroundColor Yellow
+            }
+        }
+    } catch {
+        Write-Host "No logs available" -ForegroundColor Yellow
+    }
 }
 
 Write-Host ""

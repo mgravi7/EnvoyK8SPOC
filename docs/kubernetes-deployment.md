@@ -402,16 +402,17 @@ kubectl get gateway -n api-gateway-poc
 kubectl describe gateway api-gateway -n api-gateway-poc
 
 # Check HTTPRoutes
-kubectl get httproute -n api-gateway-poc
+kubectl get httproute -n api-gateway-poc -o wide
 
 # Check SecurityPolicies
 kubectl get securitypolicy -n api-gateway-poc
+kubectl get securitypolicy -n api-gateway-poc -o yaml  # view policy targets and mappings
 
 # Check generated Envoy proxy
-kubectl get pods -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
+kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
 
 # Check Gateway service
-kubectl get svc -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
+kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway -o wide
 ```
 
 Expected Gateway status:
@@ -735,3 +736,30 @@ kubectl delete -f https://github.com/envoyproxy/gateway/releases/download/v1.2.0
 - **Troubleshooting:** `docs/troubleshooting.md`
 - **Kubernetes Manifests:** `kubernetes/`
 - **Deployment Scripts:** `scripts/`
+
+## Issuer vs JWKS (dev vs prod)
+
+When configuring JWT validation in SecurityPolicy you will often need two related but different URLs:
+
+- `issuer` — the public URL that appears in the token `iss` claim and that clients use to talk to the identity provider (Keycloak).
+- `remoteJWKS` — the internal URL where the data plane (Envoy) fetches the JWKS (public keys) to verify token signatures.
+
+Why they can differ
+- In local development the issuer is typically `http://localhost:8180/...` because developers and browsers access Keycloak on localhost.
+- Envoy runs inside the Kubernetes cluster and needs a cluster-reachable hostname (for example `http://keycloak.api-gateway-poc.svc.cluster.local:8180/...`) to fetch the JWKS. Using the cluster DNS name ensures Envoy can resolve and connect to Keycloak from inside the cluster.
+
+Recommendations
+- Development (local):
+  - Use `issuer` = `http://localhost:8180/...` so tokens contain the expected public issuer for local clients.
+  - Use `remoteJWKS` = internal cluster URL (service DNS) so Envoy can fetch keys from inside the cluster.
+  - Add a deploy-time check that Keycloak endpoints are ready before applying SecurityPolicies (this project does that in the deploy script to avoid JWKS fetch races).
+
+- Production (cloud):
+  - Use HTTPS for both `issuer` and `remoteJWKS` and a stable public hostname for the issuer (for example `https://auth.example.com/realms/...`).
+  - Ensure Envoy can reach the JWKS URI. Often the public issuer URL is reachable internally as well (or use an internal hostname that resolves to Keycloak).
+  - Validate that the `issuer` string in the SecurityPolicy exactly matches the `iss` claim in tokens.
+
+Security notes
+- Always prefer HTTPS for production JWKS/issuer endpoints.
+- Ensure the JWKS endpoint is reachable from the Envoy proxy (data plane) and that the Keycloak service is ready before security policies are applied.
+- Avoid exposing admin ports (like Envoy `9901`) publicly; use port-forwarding or a restricted management network for debugging.

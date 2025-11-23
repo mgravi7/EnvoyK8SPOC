@@ -1,0 +1,23 @@
+---
+# SecurityPolicy for External Authorization on routes that do not require JWT
+# This applies external authorization (role lookup) so backends receive x-user-roles
+# Envoy Gateway automatically forwards all response headers from ext_authz to upstream
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: external-authorization-nojwt-routes
+  namespace: api-gateway-poc
+  labels:
+    app: api-gateway
+    phase: phase3
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: product-route
+  extAuth:
+    http:
+      backendRefs:
+      - name: authz-service
+        port: 9000
+      path: /authz/roles
