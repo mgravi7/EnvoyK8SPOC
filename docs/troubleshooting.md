@@ -10,6 +10,11 @@ Common issues and solutions for EnvoyK8SPOC Kubernetes deployment.
 - [Performance Issues](#performance-issues)
 - [Debugging Commands](#debugging-commands)
 
+> Note on Phase 2 vs Phase 3
+>
+> - Phase 2 (direct Envoy): Envoy runs in the `api-gateway-poc` namespace as the `envoy` Deployment. Many debug commands reference `-n api-gateway-poc` and `deployment/envoy`.
+> - Phase 3 (Gateway API): Envoy proxy pods are created by the Envoy Gateway controller and run in the `envoy-gateway-system` namespace. To find the proxy pods use the owning-gateway label: `-l gateway.envoyproxy.io/owning-gateway-name=api-gateway` and adjust `-n envoy-gateway-system` for commands that access Envoy or controller resources.
+
 ## Pod Issues
 
 ### Pods Stuck in Pending

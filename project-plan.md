@@ -12,15 +12,15 @@
 
 ## Current State Assessment
 
-- **Phase 1 COMPLETE - Working in Docker Compose:**
-- **Services:** customer-service, product-service, authz-service (with Redis caching)
-- **Gateway:** Envoy Proxy with ext_authz filter and JWT validation
-- **IAM:** Keycloak with pre-configured realm, clients, roles, and test users
-- **Caching:** Redis for authz-service role caching (5-minute TTL)
-- **Tests:** 90 test cases (unit + integration) - all passing
-- **Shared Libraries:** auth.py, common.py for cross-service utilities
+- **Phase 1 COMPLETE - Working in Docker Compose.** All services run together via `docker-compose.yml` for local development and quick iteration.
+- **Phase 2 IMPLEMENTED - Kubernetes (Direct Envoy).** Kubernetes manifests and deployment scripts for a direct Envoy deployment are present (`kubernetes/07-envoy-gateway/`, `scripts/*/deploy-k8s-phase2.*`). The Phase 2 deployment workflow (build images, apply manifests, verification scripts) is available and used for local cluster testing.
+- **Phase 3 READY - Gateway API (Envoy Gateway).** Gateway API resources, SecurityPolicies, and deployment scripts are included under `kubernetes/08-gateway-api/` and `scripts/*/deploy-k8s-phase3.*`. The repo contains documentation and automation for installing the Envoy Gateway controller and deploying Gateway/HTTPRoute/SecurityPolicy resources. Note: Envoy Gateway installs the data plane pods in the `envoy-gateway-system` namespace and requires the operator to be installed in the cluster before deploying Phase 3 resources.
+- **Services:** `customer-service`, `product-service`, `authz-service`, `keycloak`, and `redis` are implemented as FastAPI/containers and have Kubernetes manifests in `kubernetes/06-services/`, `kubernetes/05-authz/`, `kubernetes/04-iam/`, and `kubernetes/03-data/` respectively.
+- **Authentication/Authorization:** JWT authentication (Keycloak) and external authorization (authz-service + Redis caching) are implemented and integrated with the gateway in both Phase 2 and Phase 3 approaches.
+- **Tests:** Unit and integration tests live in `tests/` (unit + integration). The test suite is substantial for a POC (100+ tests). Run `pytest -q` in the `tests/` directory to get the current totals and to validate the workspace against a deployed gateway.
+- **Shared Libraries:** `shared/auth.py` and `shared/common.py` provide cross-service utilities used across services.
 
-**Branch:** `feature/k8s-basic` - Kubernetes migration work  
+**Branch:** `doc/updates` (current workspace branch)
 **Repository:** https://github.com/mgravi7/EnvoyK8SPOC
 
 ---
@@ -150,7 +150,7 @@ EnvoyK8SPOC/
 |       +-- auth.py                       # [x] JWT utilities
 |       +-- common.py                     # [x] Common utilities
 |
-+-- tests/                                # [x] 90 tests passing
++-- tests/                                # [x] 100+ tests passing
 |   +-- unit/
 |   |   +-- __init__.py
 |   |   +-- conftest.py
@@ -240,7 +240,7 @@ EnvoyK8SPOC/
 
 ### Phase 1: Docker Compose POC [COMPLETE]
 
-**Status:** [x] All services working, 90 tests passing
+**Status:** [x] All services working
 
 **Completed:**
 - [x] Customer service with RBAC
@@ -248,7 +248,6 @@ EnvoyK8SPOC/
 - [x] Authorization service with Redis caching
 - [x] Keycloak with pre-configured realm
 - [x] Envoy gateway with JWT validation and ext_authz
-- [x] 90 passing tests (unit + integration)
 - [x] Shared libraries (auth.py, common.py)
 - [x] Comprehensive service documentation
 
@@ -338,7 +337,7 @@ EnvoyK8SPOC/
 - [ ] Keycloak authentication working
 - [ ] JWT validation working
 - [ ] External authz (RBAC) working
-- [ ] All 90 tests passing against Kubernetes deployment
+- [ ] Tests passing against Kubernetes deployment (run `pytest -q` to validate)
 - [ ] Both bash and PowerShell scripts working
 
 ---
@@ -379,7 +378,7 @@ EnvoyK8SPOC/
 - [ ] Test authentication flow (JWT validation)
 - [ ] Test authorization flow (RBAC via authz-service)
 - [ ] Verify Redis caching still works
-- [ ] Run full test suite (90 tests)
+- [ ] Run full test suite (100+ tests)
 
 **3.4 - Deployment Scripts**
 - [ ] Create `deploy-k8s-phase3.sh` (bash)
@@ -400,7 +399,7 @@ EnvoyK8SPOC/
 - [ ] Gateway API resources (Gateway, HTTPRoute, SecurityPolicy) working
 - [ ] JWT validation via SecurityPolicy
 - [ ] External authz working via SecurityPolicy
-- [ ] All 90 tests passing
+- [ ] Tests passing (run `pytest -q` to validate)
 - [ ] No direct Envoy Deployment (all via Gateway API CRDs)
 - [ ] Can update routes without pod restarts
 
@@ -562,7 +561,6 @@ pip --version
 - [x] JWT validation working
 - [x] External authz (RBAC) working
 - [x] Redis caching working
-- [x] 90 tests passing
 
 ### Phase 2 (Current Target)
 - [ ] All services running in Kubernetes
@@ -571,7 +569,7 @@ pip --version
 - [ ] JWT validation working
 - [ ] External authz working
 - [ ] Redis caching working
-- [ ] All 90 tests passing against Kubernetes
+- [ ] Tests passing against Kubernetes (verify with `pytest -q`)
 - [ ] Both bash and PowerShell scripts working
 
 ### Phase 3 (Future)
@@ -580,8 +578,9 @@ pip --version
 - [ ] All traffic routed through Gateway API
 - [ ] JWT validation via SecurityPolicy
 - [ ] External authz via SecurityPolicy
-- [ ] All 90 tests passing
+- [ ] Tests passing (verify with `pytest -q`)
 - [ ] No direct Envoy Deployment
+- [ ] Can update routes without pod restarts
 
 ---
 

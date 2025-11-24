@@ -1,4 +1,3 @@
-
 # External AuthZ Integration Test Objectives
 #
 # 1. Validate External Authorization Service Integration:
@@ -245,13 +244,17 @@ def test_auth_me_endpoint_authenticated():
 def test_auth_me_endpoint_unauthenticated():
     """
     Test /auth/me endpoint without JWT token (Phase B).
-    Verify that unauthenticated requests are rejected.
+    Verify that unauthenticated requests return guest user info.
     """
     # Call /auth/me without token
     response = requests.get("http://localhost:8080/auth/me")
-    
-    # Should be rejected by Envoy JWT filter
-    assert response.status_code == 401
+
+    # Should return guest user info (200) when JWT is optional for this route
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("email", "") == ""
+    assert isinstance(data.get("roles"), list)
+    assert "guest" in data.get("roles")
 
 
 def test_auth_me_endpoint_invalid_token():
@@ -304,5 +307,46 @@ def test_cache_works_with_multiple_users():
     assert len(customers2) >= 1
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+@pytest.mark.parametrize("username,password,expected_roles", [
+    (None, None, ["guest"]),
+    ("testuser-unvrfd", "testpass", ["unverified-user"]),
+    ("testuser-vrfd", "testpass", ["verified-user"]),
+    ("testuser", "testpass", ["user"]),
+    ("testuser-cm", "testpass", ["user", "customer-manager"]),
+    ("testuser-pm", "testpass", ["user", "product-manager"]),
+    ("testuser-pcm", "testpass", ["user", "product-category-manager"]),
+    ("adminuser", "adminpass", ["user", "admin"]),
+])
+def test_auth_me_roles_via_gateway(username, password, expected_roles):
+    """
+    Call the public /auth/me route through the gateway and verify roles returned.
+
+    - username=None -> no Authorization header -> expected guest response (200) from gateway
+    - authenticated users -> expect JSON { email, roles } and roles list matches expected_roles
+    """
+    url = "http://localhost:8080/auth/me"
+
+    if username is None:
+        response = requests.get(url)
+        assert response.status_code == 200, f"Gateway /auth/me returned {response.status_code}: {response.text}"
+        data = response.json()
+        assert "roles" in data and isinstance(data["roles"], list)
+        # Exact match against expected roles for guest case
+        assert set(data["roles"]) == set(expected_roles), f"Expected roles {expected_roles}, got {data['roles']}"
+        return
+
+    # Authenticated case: get token and call gateway
+    try:
+        token = get_keycloak_token(username, password)
+    except AssertionError:
+        pytest.skip(f"User '{username}' not configured in Keycloak")
+
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get(url, headers=headers)
+    assert response.status_code == 200, f"Gateway /auth/me returned {response.status_code}: {response.text}"
+
+    data = response.json()
+    assert "roles" in data and isinstance(data["roles"], list)
+
+    # Compare as sets to avoid ordering issues
+    assert set(data["roles"]) == set(expected_roles), f"Expected roles {expected_roles}, got {data['roles']}"

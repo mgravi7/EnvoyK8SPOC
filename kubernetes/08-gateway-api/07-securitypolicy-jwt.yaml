@@ -1,31 +1,25 @@
 ---
-# Combined SecurityPolicy for JWT-required Routes (Customer + Auth-Me)
+# SecurityPolicy for JWT-required Routes (Customer)
 #
-# This policy enforces JWT authentication AND calls external authorization service
-# for role lookup on routes that require authentication.
+# Purpose:
+# - Enforce JWT authentication for routes that MUST have a valid token
+# - Use extAuth (authz-service) to perform role lookup and return x-user-roles
 #
-# Applied to multiple routes: customer-route, auth-me-route
+# Behavior:
+# - `jwt.optional: false` (default) requires a valid JWT Authorization header.
+#   Requests without a valid token are rejected by Envoy (401).
+# - When a valid token is present Envoy extracts claims using claimToHeaders
+#   and sends them to authz-service via headersToExtAuth.
+# - authz-service looks up roles and returns x-user-roles (and can pass through
+#   claim headers) which Envoy forwards to backend services via headersToBackend.
 #
-# Header Flow:
-# 1. JWT Filter (Envoy) validates token and extracts claims → adds headers:
-#    - x-user-email (from 'email' claim)
-#    - x-user-name (from 'preferred_username' claim)
-#    - x-email-verified (from 'email_verified' claim)
+# Header Flow (Authenticated users):
+# 1. Envoy validates token and extracts claims → adds headers (x-user-email, x-user-name, x-email-verified)
+# 2. headersToExtAuth forwards JWT-derived headers to authz-service
+# 3. authz-service returns x-user-roles and passes through claim headers
+# 4. Envoy forwards selected response headers to the backend via headersToBackend
 #
-# 2. headersToExtAuth: JWT-derived headers are sent to authz-service
-#    - authz-service receives: x-user-email, x-user-name, x-email-verified
-#    - authz-service looks up roles using email from Authorization header
-#    - authz-service returns ALL headers in response:
-#      * x-user-email (authoritative from JWT)
-#      * x-user-name (passed through)
-#      * x-email-verified (passed through)
-#      * x-user-roles (looked up from database)
-#
-# 3. headersToBackend: Specified headers from authz response forwarded to upstream
-#    - Backend services receive complete user context
-#    - Backend services use shared.auth.get_current_user() to extract user info
-#
-# Note: All authenticated users MUST have valid JWT tokens. No guest access on these routes.
+# Note: Guests are NOT allowed on routes targeted by this policy.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
@@ -39,16 +33,14 @@ spec:
   - group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: customer-route
-  - group: gateway.networking.k8s.io
-    kind: HTTPRoute
-    name: auth-me-route
   jwt:
+    optional: false
     providers:
     - name: keycloak-provider
       issuer: http://localhost:8180/realms/api-gateway-poc
       remoteJWKS:
         uri: http://keycloak.api-gateway-poc.svc.cluster.local:8180/realms/api-gateway-poc/protocol/openid-connect/certs
-        # cacheDuration: 300s (parsing error in Envoy Gateway v0.10.0 - removed for now)
+        cacheDuration: 300s
       claimToHeaders:
       - claim: email
         header: x-user-email

@@ -186,32 +186,32 @@ Phase 3 introduces a separation between the **control plane** (Envoy Gateway con
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                 Envoy Gateway Architecture (Phase 3)              │
+│                 Envoy Gateway Architecture (Phase 3)             │
 └──────────────────────────────────────────────────────────────────┘
 
 Namespace: envoy-gateway-system
 ┌────────────────────────────────────────────────────────────────┐
-│                                                                  │
-│  Control Plane:                                                 │
+│                                                                │
+│  Control Plane:                                                │
 │  └─ envoy-gateway (controller)                                 │
-│     - Watches Gateway API resources                             │
-│     - Generates Envoy configuration dynamically                 │
-│     - Manages data plane lifecycle                              │
-│                                                                  │
-│  Data Plane:                                                    │
+│     - Watches Gateway API resources                            │
+│     - Generates Envoy configuration dynamically                │
+│     - Manages data plane lifecycle                             │
+│                                                                │
+│  Data Plane:                                                   │
 │  └─ envoy-api-gateway-poc-api-gateway-xxxxxx (proxy pod)       │
 │     ├─ Envoy proxy containers (2/2 running)                    │
 │     ├─ LoadBalancer Service (localhost:8080)                   │
 │     └─ Automatically created & managed by Envoy Gateway        │
-│                                                                  │
+│                                                                │
 └────────────────────────────────────────────────────────────────┘
                            ▲
                            │ watches & manages
                            │
 Namespace: api-gateway-poc
 ┌────────────────────────────────────────────────────────────────┐
-│                                                                  │
-│  Gateway API Resources (declarative config):                    │
+│                                                                │
+│  Gateway API Resources (declarative config):                   │
 │  ├─ GatewayClass (envoy-gateway)                               │
 │  ├─ Gateway (api-gateway) - defines listeners                  │
 │  ├─ HTTPRoutes - define routing rules                          │
@@ -220,16 +220,16 @@ Namespace: api-gateway-poc
 │  │  ├─ auth-me-route    → authz-service                        │
 │  │  └─ keycloak-route   → keycloak                             │
 │  └─ SecurityPolicies - define auth & security                  │
-│     ├─ jwt-authentication (JWT validation)                      │
-│     └─ external-authorization (RBAC checks)                     │
-│                                                                  │
-│  Application Workloads (backend services):                      │
+│     ├─ jwt-authentication (JWT validation)                     │
+│     └─ external-authorization (RBAC checks)                    │
+│                                                                │
+│  Application Workloads (backend services):                     │
 │  ├─ customer-service (Deployment + Service)                    │
 │  ├─ product-service  (Deployment + Service)                    │
 │  ├─ authz-service    (Deployment + Service)                    │
 │  ├─ keycloak         (Deployment + LoadBalancer Service)       │
 │  └─ redis            (Deployment + Service + PVC)              │
-│                                                                  │
+│                                                                │
 └────────────────────────────────────────────────────────────────┘
 
 Traffic Flow:
@@ -272,20 +272,50 @@ kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway
 
 ### Quick Start Phase 3
 
-**1. Install Envoy Gateway (one-time):**
+**Prerequisites:**
+- Helm 3.x installed (install via `winget install Helm.Helm` on Windows 11)
+
+**1. Install Helm (if not already installed):**
 
 ```bash
-# Install Envoy Gateway operator
-kubectl apply -f https://github.com/envoyproxy/gateway/releases/download/v1.2.0/install.yaml
+# Windows 11 (recommended)
+winget install Helm.Helm
 
-# Wait for it to be ready
+# Or via Chocolatey
+choco install kubernetes-helm
+
+# Verify installation
+helm version
+```
+
+**2. Clean up any existing Gateway API CRDs (if upgrading or reinstalling):**
+
+```bash
+# Delete existing Gateway API CRDs to avoid version conflicts
+kubectl delete crd $(kubectl get crd -o name | Select-String "gateway") --ignore-not-found=true
+
+# Verify clean slate
+kubectl get crd | Select-String "gateway"
+```
+
+**3. Install Envoy Gateway v1.6.0 via Helm:**
+
+```bash
+# Install Envoy Gateway using Helm OCI registry
+helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm `
+  --version v1.6.0 `
+  --create-namespace `
+  --namespace envoy-gateway-system
+
+# Wait for Envoy Gateway to be ready
 kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 
 # Verify installation
 kubectl get pods -n envoy-gateway-system
+helm list -n envoy-gateway-system
 ```
 
-**2. Build Images (if not already built):**
+**4. Build Images (if not already built):**
 
 ```bash
 # Linux/Mac/WSL
@@ -297,7 +327,7 @@ cd scripts\powershell
 .\build-images.ps1
 ```
 
-**3. Deploy Phase 3:**
+**5. Deploy Phase 3:**
 
 ```bash
 # Linux/Mac/WSL
@@ -307,14 +337,7 @@ cd scripts\powershell
 .\deploy-k8s-phase3.ps1
 ```
 
-The script will:
-- Check Envoy Gateway is installed
-- Detect and optionally remove Phase 2 Envoy (port conflict prevention)
-- Deploy backend services
-- Create Gateway API resources
-- Wait for Gateway to be ready
-
-**4. Verify and Test:**
+**6. Verify and Test:**
 
 ```bash
 # Linux/Mac/WSL
@@ -326,12 +349,61 @@ The script will:
 .\test-endpoints.ps1
 ```
 
+### Notes & Clarifications
+- **Helm vs kubectl:** Phase 3 now uses Helm for Envoy Gateway installation (v1.6.0) instead of kubectl apply. This avoids CRD size issues that occur with large manifests.
+- **Version:** Using Envoy Gateway v1.6.0 (latest stable) instead of v1.2.0. Your existing manifests in `kubernetes/08-gateway-api/` should work with v1.6.0 as Gateway API v1 is stable.
+- Tests: the test suite lives in `tests/` (unit + integration). Do not rely on a hardcoded count in docs — run `pytest -q` to see current totals.
+- Keycloak token examples in this guide use the dev `test-client` (public) for convenience; for CI and automation use a confidential client with a secret or service account credentials.
+- SecurityPolicy filenames and exact resources can vary; check `kubernetes/08-gateway-api/` for the authoritative file names. The migration scripts apply the JWT policy followed by the ext-auth policy used for public/no-JWT routes.
+- Port mappings: see `docs/port-mappings.md` for an authoritative table of service → host mappings and notes about Docker Desktop behavior.
+- Archived Phase summaries: legacy phase summaries moved to `docs/archive/`.
+
 ### Detailed Deployment Steps Phase 3
 
 <details>
 <summary>Click to expand Phase 3 detailed steps</summary>
 
 #### Step 1: Install Envoy Gateway (One-time per cluster)
+
+**Prerequisites:**
+- Helm 3.x installed (install via `winget install Helm.Helm` on Windows 11)
+
+**Option A: Install via Helm (Recommended for v1.6.0+)**
+
+Helm handles large CRDs better than kubectl apply and avoids manifest size issues.
+
+```bash
+# 1. Install Helm if not already installed
+# Windows 11
+winget install Helm.Helm
+
+# Or via Chocolatey
+choco install kubernetes-helm
+
+# Verify
+helm version
+
+# 2. Clean up any existing Gateway API CRDs (to avoid version conflicts)
+kubectl delete crd $(kubectl get crd -o name | Select-String "gateway") --ignore-not-found=true
+
+# 3. Install Envoy Gateway v1.6.0
+helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm `
+  --version v1.6.0 `
+  --create-namespace `
+  --namespace envoy-gateway-system
+
+# 4. Wait for Envoy Gateway to be ready
+kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
+
+# 5. Verify installation
+kubectl get pods -n envoy-gateway-system
+helm list -n envoy-gateway-system
+kubectl get crd | grep gateway
+```
+
+**Option B: Install via kubectl (Alternative for v1.2.0)**
+
+> **Note:** v1.6.0 manifests have CRD size issues with kubectl apply. Use Helm (Option A) for v1.6.0+.
 
 ```bash
 # Install Envoy Gateway v1.2.0 (compatible with Envoy v1.31)
@@ -345,11 +417,12 @@ kubectl get pods -n envoy-gateway-system
 kubectl get crd | grep gateway
 ```
 
-Expected CRDs:
+Expected CRDs (both methods):
 - `gatewayclasses.gateway.networking.k8s.io`
 - `gateways.gateway.networking.k8s.io`
 - `httproutes.gateway.networking.k8s.io`
 - `securitypolicies.gateway.envoyproxy.io`
+- Plus additional Gateway API and Envoy Gateway CRDs
 
 #### Step 2: Deploy Backend Services
 
@@ -415,10 +488,21 @@ kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway
 kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway -o wide
 ```
 
-Expected Gateway status:
+If you need to remove an existing SecurityPolicy while iterating on policy changes, delete it with:
+
+```bash
+# Delete a named SecurityPolicy
+kubectl delete securitypolicy jwt-required-routes-securitypolicy -n api-gateway-poc
+
+# Or delete all SecurityPolicies in the namespace (use with caution)
+kubectl delete securitypolicy --all -n api-gateway-poc
 ```
-NAME          CLASS           ADDRESS      PROGRAMMED   AGE
-api-gateway   envoy-gateway   localhost    True         2m
+
+After deleting, re-apply your updated policy YAML:
+
+```bash
+kubectl apply -f kubernetes/08-gateway-api/07-securitypolicy-jwt.yaml
+kubectl apply -f kubernetes/08-gateway-api/09-securitypolicy-extauth-noJWT-routes.yaml
 ```
 
 </details>
@@ -488,17 +572,26 @@ kubectl logs -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api
 ### Get JWT Token from Keycloak
 
 ```bash
-TOKEN=$(curl -s -X POST "http://localhost:8080/auth/realms/api-gateway-poc/protocol/openid-connect/token" \
+# Direct Keycloak (Phase 2) - Keycloak running on port 8180 inside the cluster
+curl -s -X POST "http://localhost:8180/realms/api-gateway-poc/protocol/openid-connect/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=customer-client" \
-  -d "client_secret=customer-secret-key" \
-  -d "username=alice@example.com" \
-  -d "password=alice123" \
-  -d "grant_type=password" \
-  | jq -r '.access_token')
-
-echo "Token obtained: ${TOKEN:0:50}..."
+  -d "client_id=test-client" \
+  -d "username=testuser" \
+  -d "password=testpass" \
+  -d "grant_type=password" | jq -r '.access_token'
 ```
+
+```bash
+# Keycloak via Gateway (Phase 3) - Keycloak exposed by the Gateway under /auth
+curl -s -X POST "http://localhost:8080/auth/realms/api-gateway-poc/protocol/openid-connect/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=test-client" \
+  -d "username=testuser" \
+  -d "password=testpass" \
+  -d "grant_type=password" | jq -r '.access_token'
+```
+
+- For CI/automation prefer the confidential client (with client secret) or a service account flow; do not embed dev client secrets in public pipelines.
 
 ### Test Endpoints
 
@@ -709,9 +802,29 @@ This deletes:
 
 **Note:** Envoy Gateway operator (envoy-gateway-system namespace) is NOT deleted and can be reused.
 
-To uninstall Envoy Gateway:
+### Uninstall Envoy Gateway
+
+**If installed via Helm (recommended):**
+
 ```bash
+# Uninstall Envoy Gateway
+helm uninstall envoy-gateway -n envoy-gateway-system
+
+# Delete the namespace
+kubectl delete namespace envoy-gateway-system
+
+# Clean up Gateway API CRDs (optional - only if you want a complete removal)
+kubectl delete crd $(kubectl get crd -o name | Select-String "gateway")
+```
+
+**If installed via kubectl:**
+
+```bash
+# Uninstall using the install manifest
 kubectl delete -f https://github.com/envoyproxy/gateway/releases/download/v1.2.0/install.yaml
+
+# Or delete the namespace directly
+kubectl delete namespace envoy-gateway-system
 ```
 
 ## Next Steps
