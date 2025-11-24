@@ -35,11 +35,11 @@ Gateway (api-gateway)
 ## Prerequisites
 
 Before starting Phase 3, ensure:
-- ✅ Phase 2 is working successfully
-- ✅ All 90 tests passing
+- ✅ Phase 2 is working successfully (optional but helpful for verification)
+- ✅ Integration tests passing locally (run `pytest` to get the current test count)
 - ✅ Understanding of current Envoy configuration
 - ✅ Familiarity with kubectl and Kubernetes concepts
-- ✅ Docker Desktop Kubernetes enabled
+- ✅ Docker Desktop Kubernetes enabled (or another Kubernetes environment such as kind/minikube)
 
 ## Installation Steps
 
@@ -49,7 +49,7 @@ Before starting Phase 3, ensure:
 # Install Envoy Gateway v1.2.0 (compatible with Envoy v1.31)
 kubectl apply -f https://github.com/envoyproxy/gateway/releases/download/v1.2.0/install.yaml
 
-# Wait for Envoy Gateway to be ready
+# Wait for Envoy Gateway control plane to be ready
 kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 
 # Verify installation
@@ -63,6 +63,8 @@ kubectl get crd | grep gateway
 - `httproutes.gateway.networking.k8s.io`
 - `referencegrants.gateway.networking.k8s.io`
 - `securitypolicies.gateway.envoyproxy.io` (Envoy Gateway specific)
+
+> CRD compatibility note: different Envoy Gateway releases may introduce small API differences (field names such as `jwt.optional`, `headersToBackend`, or `headersToExtAuth`). If you see CRD validation errors, check the installed CRD versions (`kubectl get crd securitypolicies.gateway.envoyproxy.io -o yaml`) and consult the Envoy Gateway release notes.
 
 ### Step 2: Deploy Phase 3 Resources
 
@@ -88,7 +90,7 @@ The script will:
 
 ```bash
 # 1. Deploy backend services (if not already deployed)
-./scripts/bash/deploy-k8s-phase2.sh  # But skip Envoy deployment
+./scripts/bash/deploy-k8s-phase2.sh  # but skip Envoy deployment when using Phase 3
 
 # 2. Create Gateway API resources
 kubectl apply -f kubernetes/08-gateway-api/01-gatewayclass.yaml
@@ -97,8 +99,9 @@ kubectl apply -f kubernetes/08-gateway-api/03-httproute-customer.yaml
 kubectl apply -f kubernetes/08-gateway-api/04-httproute-product.yaml
 kubectl apply -f kubernetes/08-gateway-api/05-httproute-auth-me.yaml
 kubectl apply -f kubernetes/08-gateway-api/06-httproute-keycloak.yaml
+# SecurityPolicy filenames in this repo: check kubernetes/08-gateway-api/ for current names
 kubectl apply -f kubernetes/08-gateway-api/07-securitypolicy-jwt.yaml
-kubectl apply -f kubernetes/08-gateway-api/08-securitypolicy-extauth.yaml
+kubectl apply -f kubernetes/08-gateway-api/09-securitypolicy-extauth-noJWT-routes.yaml
 ```
 
 ### Step 3: Verify Deployment
@@ -115,10 +118,11 @@ kubectl get httproute -n api-gateway-poc
 kubectl get securitypolicy -n api-gateway-poc
 
 # Check generated Envoy proxy pods
-kubectl get pods -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
+# Phase 3: proxies run in envoy-gateway-system (owned by the Gateway)
+kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
 
 # Check Gateway service (LoadBalancer)
-kubectl get svc -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
+kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
 
 # Run verification script
 ./scripts/bash/verify-deployment.sh  # or verify-deployment.ps1 on Windows
@@ -126,8 +130,8 @@ kubectl get svc -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=
 
 **Expected output:**
 - Gateway status: `Programmed: True`
-- HTTPRoutes: 4 routes (customer, product, auth-me, keycloak)
-- SecurityPolicies: 2 policies (JWT, ext_authz)
+- HTTPRoutes: configured routes as applied
+- SecurityPolicies: policies applied as requested
 - Envoy proxy pod: Running
 - LoadBalancer service: Assigned (localhost on Docker Desktop)
 
@@ -236,13 +240,15 @@ spec:
         uri: http://keycloak.api-gateway-poc.svc.cluster.local:8180/realms/...
 ```
 
+> Note: this repo uses two SecurityPolicy files: `07-securitypolicy-jwt.yaml` (JWT required routes) and `09-securitypolicy-extauth-noJWT-routes.yaml` (optional-JWT / extAuth-only routes). Ensure you apply the files that match your intended route behaviors.
+
 ## Testing Phase 3
 
 ### 1. Basic Connectivity
 
 ```bash
 # Get Gateway service (should be localhost on Docker Desktop)
-kubectl get svc -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
+kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
 
 # Test Keycloak route (no auth required)
 curl http://localhost:8080/auth/realms/api-gateway-poc
@@ -251,24 +257,26 @@ curl http://localhost:8080/auth/realms/api-gateway-poc
 ### 2. Authentication Flow
 
 ```bash
-# Get JWT token from Keycloak
-TOKEN=$(curl -X POST http://localhost:8080/auth/realms/api-gateway-poc/protocol/openid-connect/token \
-  -d "client_id=customer-client" \
-  -d "client_secret=customer-secret-key" \
-  -d "username=alice@example.com" \
-  -d "password=alice123" \
+# Get JWT token from Keycloak (development example using public client 'test-client')
+TOKEN=$(curl -s -X POST http://localhost:8080/auth/realms/api-gateway-poc/protocol/openid-connect/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=test-client" \
+  -d "username=testuser" \
+  -d "password=testpass" \
   -d "grant_type=password" | jq -r '.access_token')
 
 echo "Token: $TOKEN"
 ```
 
+> For CI/automation prefer a confidential client (with client secret) or a service account flow; do not embed dev client secrets in public pipelines.
+
 ### 3. Test Protected Endpoints
 
 ```bash
-# Test customer service (requires JWT + customer-viewer role)
+# Test customer service (requires JWT + appropriate role)
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/customers
 
-# Test product service (requires JWT + product-viewer role)
+# Test product service
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/products
 
 # Test user info endpoint
@@ -283,7 +291,7 @@ cd tests
 pytest integration/ -v
 ```
 
-Expected: All 90 tests should pass (same as Phase 2)
+Expected: Integration tests should pass (example: this workspace ran 101 tests successfully).
 
 ## Key Differences from Phase 2
 
@@ -359,8 +367,8 @@ kubectl describe httproute customer-route -n api-gateway-poc
 kubectl get svc customer-service -n api-gateway-poc
 kubectl get endpoints customer-service -n api-gateway-poc
 
-# Check Envoy proxy logs
-kubectl logs -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
+# Check Envoy proxy logs (Phase 3 proxies run in envoy-gateway-system)
+kubectl logs -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
 ```
 
 **Common causes:**
@@ -377,12 +385,13 @@ kubectl logs -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api
 # Check SecurityPolicy status
 kubectl describe securitypolicy jwt-authentication -n api-gateway-poc
 
-# Verify Keycloak JWKS endpoint is accessible
-kubectl run -it --rm debug --image=curlimages/curl --restart=Never -n api-gateway-poc \
-  -- curl http://keycloak.api-gateway-poc.svc.cluster.local:8180/realms/api-gateway-poc/protocol/openid-connect/certs
+# Verify Keycloak JWKS endpoint is accessible from the data plane
+# Phase 3: exec into an Envoy proxy pod in envoy-gateway-system
+kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
+kubectl exec -it <envoy-pod> -n envoy-gateway-system -- curl http://keycloak.api-gateway-poc.svc.cluster.local:8180/realms/api-gateway-poc/protocol/openid-connect/certs
 
 # Check Envoy proxy logs for JWT errors
-kubectl logs -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api-gateway | grep -i jwt
+kubectl logs -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway | grep -i jwt
 ```
 
 **Common causes:**
@@ -399,15 +408,14 @@ kubectl logs -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api
 # Check SecurityPolicy status
 kubectl describe securitypolicy external-authorization -n api-gateway-poc
 
-# Verify authz-service is accessible
-kubectl run -it --rm debug --image=curlimages/curl --restart=Never -n api-gateway-poc \
-  -- curl http://authz-service.api-gateway-poc.svc.cluster.local:9000/authz/health
+# Verify authz-service is accessible from Envoy proxy
+kubectl exec -it <envoy-pod> -n envoy-gateway-system -- curl http://authz-service.api-gateway-poc.svc.cluster.local:9000/authz/health
 
 # Check authz-service logs
 kubectl logs -n api-gateway-poc deployment/authz-service --tail=50
 
 # Check Envoy proxy logs for ext_authz errors
-kubectl logs -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api-gateway | grep -i authz
+kubectl logs -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway | grep -i authz
 ```
 
 **Common causes:**
@@ -473,7 +481,7 @@ Or use the deployment scripts:
 - `kubernetes/08-gateway-api/05-httproute-auth-me.yaml` - User info route
 - `kubernetes/08-gateway-api/06-httproute-keycloak.yaml` - Keycloak routes
 - `kubernetes/08-gateway-api/07-securitypolicy-jwt.yaml` - JWT authentication
-- `kubernetes/08-gateway-api/08-securitypolicy-extauth.yaml` - External authorization
+- `kubernetes/08-gateway-api/09-securitypolicy-extauth-noJWT-routes.yaml` - External authorization
 
 ## Next Steps After Phase 3
 
@@ -535,6 +543,6 @@ The migration maintains all functionality from Phase 2 (JWT validation, external
 
 ---
 
-**Last Updated:** 2024
+**Last Updated:** see git history
 **Status:** Ready for deployment
 **Phase:** 3 - Gateway API Migration

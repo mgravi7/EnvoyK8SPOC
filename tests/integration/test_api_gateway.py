@@ -27,6 +27,8 @@ import requests
 import pytest
 import sys
 import os
+import base64
+import json
 
 # Add unit test directory to path to import conftest
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -39,6 +41,44 @@ from conftest import get_access_token, get_auth_headers, GATEWAY_BASE_URL
 # Use gateway URL from conftest
 BASE_URL = GATEWAY_BASE_URL
 
+
+def make_tampered_token(legitimate_token: str, modify_payload_fn):
+    """Decode JWT payload, apply modification function, and re-encode token (keeps original signature).
+
+    Args:
+        legitimate_token: Original valid JWT token string
+        modify_payload_fn: Callable that accepts and returns the payload dict (mutate or return new)
+
+    Returns:
+        (tampered_token, original_payload_dict)
+    """
+    parts = legitimate_token.split('.')
+    assert len(parts) == 3, "Invalid JWT format"
+
+    # Decode payload part with padding
+    payload_part = parts[1]
+    padding = 4 - (len(payload_part) % 4)
+    if padding != 4:
+        payload_part += '=' * padding
+
+    decoded_bytes = base64.urlsafe_b64decode(payload_part)
+    payload = json.loads(decoded_bytes)
+
+    # Keep original copy for assertions
+    original_payload = dict(payload)
+
+    # Allow modifier to change payload (in-place or return new dict)
+    modified = modify_payload_fn(payload)
+    if modified is None:
+        modified_payload = payload
+    else:
+        modified_payload = modified
+
+    tampered_payload_bytes = json.dumps(modified_payload).encode('utf-8')
+    tampered_payload_b64 = base64.urlsafe_b64encode(tampered_payload_bytes).decode('utf-8').rstrip('=')
+
+    tampered_token = f"{parts[0]}.{tampered_payload_b64}.{parts[2]}"
+    return tampered_token, original_payload
 
 
 @pytest.mark.parametrize("endpoint,role,expected_status", [
@@ -149,7 +189,6 @@ def test_rbac_unverified_user_access():
     assert response.status_code == 200
 
 
-
 @pytest.mark.parametrize("endpoint,role", [
     ("/customers", "testuser-cm"),
     ("/products", "testuser-pm"),
@@ -161,6 +200,7 @@ def test_rbac_verified_user_access(endpoint, role):
     headers = get_auth_headers(role)
     response = requests.get(f"{BASE_URL}{endpoint}", headers=headers)
     assert response.status_code == 200
+
 
 def test_jwt_tampering_rejected():
     """
@@ -176,42 +216,21 @@ def test_jwt_tampering_rejected():
     
     This validates that JWT signature verification is properly enforced.
     """
-    import base64
-    import json
-    
     # 1. Get legitimate token for testuser
     legitimate_token = get_access_token("testuser")
-    
-    # 2. Decode and tamper with the JWT payload
-    # JWT structure: header.payload.signature
-    parts = legitimate_token.split('.')
-    assert len(parts) == 3, "Invalid JWT format"
-    
-    # Decode the payload (middle part)
-    payload_part = parts[1]
-    # Add padding if needed for base64 decoding
-    padding = 4 - (len(payload_part) % 4)
-    if padding != 4:
-        payload_part += '=' * padding
-    
-    decoded_bytes = base64.urlsafe_b64decode(payload_part)
-    payload = json.loads(decoded_bytes)
-    
-    # 3. Modify the email claim to impersonate testuser-cm
-    original_email = payload.get("email")
-    payload["email"] = "test.user-cm@example.com"
-    
-    # 4. Re-encode the tampered payload
-    tampered_payload_bytes = json.dumps(payload).encode('utf-8')
-    tampered_payload_b64 = base64.urlsafe_b64encode(tampered_payload_bytes).decode('utf-8').rstrip('=')
-    
-    # 5. Reconstruct the JWT with tampered payload (original signature)
-    tampered_token = f"{parts[0]}.{tampered_payload_b64}.{parts[2]}"
-    
+
+    # 2-5: Build tampered token by replacing email claim
+    def modify_email(payload):
+        payload["email"] = "test.user-cm@example.com"
+        return payload
+
+    tampered_token, original_payload = make_tampered_token(legitimate_token, modify_email)
+    original_email = original_payload.get("email")
+
     # 6. Try to access /customers with tampered token
     headers = {"Authorization": f"Bearer {tampered_token}"}
     response = requests.get(f"{BASE_URL}/customers", headers=headers)
-    
+
     # 7. Capture response details for analysis
     print("\n" + "="*70)
     print("JWT TAMPERING SECURITY TEST RESULTS")
@@ -249,48 +268,28 @@ def test_jwt_expired_token_rejected():
     
     This validates that JWT expiration validation is properly enforced.
     """
-    import base64
-    import json
-    import time
-    
     # 1. Get legitimate token for testuser
     legitimate_token = get_access_token("testuser")
-    
-    # 2. Decode and tamper with the JWT payload
-    parts = legitimate_token.split('.')
-    assert len(parts) == 3, "Invalid JWT format"
-    
-    # Decode the payload
-    payload_part = parts[1]
-    padding = 4 - (len(payload_part) % 4)
-    if padding != 4:
-        payload_part += '=' * padding
-    
-    decoded_bytes = base64.urlsafe_b64decode(payload_part)
-    payload = json.loads(decoded_bytes)
-    
-    # 3. Modify the expiration claim to a past timestamp
-    original_exp = payload.get("exp")
-    past_timestamp = int(time.time()) - 3600  # 1 hour ago
-    payload["exp"] = past_timestamp
-    
-    # 4. Re-encode the tampered payload
-    tampered_payload_bytes = json.dumps(payload).encode('utf-8')
-    tampered_payload_b64 = base64.urlsafe_b64encode(tampered_payload_bytes).decode('utf-8').rstrip('=')
-    
-    # 5. Reconstruct the JWT with expired timestamp (original signature)
-    tampered_token = f"{parts[0]}.{tampered_payload_b64}.{parts[2]}"
-    
+
+    def modify_exp(payload):
+        import time
+        past_timestamp = int(time.time()) - 3600  # 1 hour ago
+        payload["exp"] = past_timestamp
+        return payload
+
+    tampered_token, original_payload = make_tampered_token(legitimate_token, modify_exp)
+    original_exp = original_payload.get("exp")
+
     # 6. Try to access /customers with expired token
     headers = {"Authorization": f"Bearer {tampered_token}"}
     response = requests.get(f"{BASE_URL}/customers", headers=headers)
-    
+
     # 7. Capture response details for analysis
     print("\n" + "="*70)
     print("JWT EXPIRATION SECURITY TEST RESULTS")
     print("="*70)
     print(f"Original exp:      {original_exp}")
-    print(f"Tampered exp:      {past_timestamp} (1 hour ago)")
+    print(f"Tampered exp:      {int(__import__('time').time()) - 3600} (1 hour ago)")
     print(f"Response status:   {response.status_code}")
     print(f"Response headers:  {dict(response.headers)}")
     print(f"Response body:     {response.text[:200] if response.text else '(empty)'}")
@@ -321,40 +320,20 @@ def test_jwt_wrong_issuer_rejected():
     
     This validates that JWT issuer validation is properly enforced.
     """
-    import base64
-    import json
-    
     # 1. Get legitimate token for testuser
     legitimate_token = get_access_token("testuser")
-    
-    # 2. Decode and tamper with the JWT payload
-    parts = legitimate_token.split('.')
-    assert len(parts) == 3, "Invalid JWT format"
-    
-    # Decode the payload
-    payload_part = parts[1]
-    padding = 4 - (len(payload_part) % 4)
-    if padding != 4:
-        payload_part += '=' * padding
-    
-    decoded_bytes = base64.urlsafe_b64decode(payload_part)
-    payload = json.loads(decoded_bytes)
-    
-    # 3. Modify the issuer claim to a malicious/different issuer
-    original_issuer = payload.get("iss")
-    payload["iss"] = "http://malicious-keycloak.example.com/realms/fake-realm"
-    
-    # 4. Re-encode the tampered payload
-    tampered_payload_bytes = json.dumps(payload).encode('utf-8')
-    tampered_payload_b64 = base64.urlsafe_b64encode(tampered_payload_bytes).decode('utf-8').rstrip('=')
-    
-    # 5. Reconstruct the JWT with wrong issuer (original signature)
-    tampered_token = f"{parts[0]}.{tampered_payload_b64}.{parts[2]}"
-    
+
+    def modify_iss(payload):
+        payload["iss"] = "http://malicious-keycloak.example.com/realms/fake-realm"
+        return payload
+
+    tampered_token, original_payload = make_tampered_token(legitimate_token, modify_iss)
+    original_issuer = original_payload.get("iss")
+
     # 6. Try to access /customers with wrong issuer token
     headers = {"Authorization": f"Bearer {tampered_token}"}
     response = requests.get(f"{BASE_URL}/customers", headers=headers)
-    
+
     # 7. Capture response details for analysis
     print("\n" + "="*70)
     print("JWT ISSUER SECURITY TEST RESULTS")

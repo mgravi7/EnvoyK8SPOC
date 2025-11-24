@@ -119,19 +119,21 @@ def extract_email_from_authorization_header(request: Request, request_id: Option
         return None
 
 
-def lookup_user_roles(email: str, request_id: Optional[str] = None) -> list:
+def lookup_user_roles(email: str, request_id: Optional[str] = None, email_verified: Optional[str] = None) -> list:
     """
     Unified role lookup logic for endpoints.
 
     Queries data access layer (which handles caching internally).
-    Returns 'unverified-user' role if user not found in database.
+    If user not found in database, return 'verified-user' when email_verified is true,
+    otherwise return 'unverified-user'.
 
     Args:
         email: User email address
         request_id: Optional request ID for logging correlation
+        email_verified: Optional string flag from JWT ('true'/'false')
 
     Returns:
-        List of role names (defaults to ['unverified-user'] if user not found)
+        List of role names (defaults to ['unverified-user'] or ['verified-user'] if user not found)
     """
     try:
         roles = auth_data.get_user_roles(email)
@@ -140,10 +142,53 @@ def lookup_user_roles(email: str, request_id: Optional[str] = None) -> list:
         return roles
     except UserNotFoundException:
         if request_id:
-            logger.info(f"[{request_id}] No DB entry for {email}. Returning role 'unverified-user'.")
+            logger.info(f"[{request_id}] No DB entry for {email}. Returning default role based on email verification.")
         else:
-            logger.info(f"No DB entry for {email}. Returning role 'unverified-user'.")
+            logger.info(f"No DB entry for {email}. Returning default role based on email verification.")
+        # If the JWT indicates the email is verified, return 'verified-user'
+        try:
+            if email_verified and isinstance(email_verified, str) and email_verified.lower() == "true":
+                return ["verified-user"]
+        except Exception:
+            pass
         return ["unverified-user"]
+
+
+def resolve_user_and_roles(request: Request, request_id: Optional[str] = None):
+    """
+    Extract JWT-derived headers, determine user email from Authorization header,
+    lookup roles (using email_verified if provided), and build response headers.
+
+    Returns:
+        tuple: (response_headers: dict, roles: list, email: Optional[str])
+    """
+    # Extract JWT-derived headers to pass through to backend
+    jwt_email = request.headers.get("x-user-email", "")
+    jwt_name = request.headers.get("x-user-name", "")
+    jwt_email_verified = request.headers.get("x-email-verified", "")
+
+    # Extract email from Authorization header (returns None if invalid/missing)
+    email = extract_email_from_authorization_header(request, request_id)
+
+    # Build base response headers (passthrough)
+    response_headers = {
+        "x-user-email": jwt_email,
+        "x-user-name": jwt_name,
+        "x-email-verified": jwt_email_verified
+    }
+
+    # Guest case: no valid JWT/email in Authorization header
+    if not email:
+        return response_headers, ["guest"], None
+
+    # Lookup roles using authoritative email and consider email_verified flag
+    roles = lookup_user_roles(email, request_id, jwt_email_verified)
+
+    # Override x-user-email with authoritative email from token
+    # Is this really necessary?
+    response_headers["x-user-email"] = email
+
+    return response_headers, roles, email
 
 
 @app.get("/authz/health")
@@ -191,10 +236,12 @@ async def get_current_user(request: Request):
     """
     logger.info("User info request received (/authz/me)")
 
-    # Extract email from request (returns None if no valid JWT)
-    email = extract_email_from_authorization_header(request)
+    request_id = request.headers.get("x-request-id", "unknown")
 
-    # If no valid JWT, return guest user
+    # Resolve user and roles using shared logic
+    response_headers, roles, email = resolve_user_and_roles(request, request_id)
+
+    # If no valid JWT/email, return guest user
     if not email:
         logger.info("Returning guest user for /authz/me request")
         return {
@@ -202,9 +249,8 @@ async def get_current_user(request: Request):
             "roles": ["guest"]
         }
 
-    # Lookup roles for authenticated user (cache handled by data layer)
+    # Return roles (roles list may include verified/unverified defaults)
     logger.info(f"User info request for email: {email}")
-    roles = lookup_user_roles(email)
     logger.info(f"Returning user info for {email}: roles={roles}")
     return {
         "email": email,
@@ -228,32 +274,6 @@ async def get_user_roles_endpoint(request: Request, path: Optional[str] = None):
     Also passes through JWT-derived headers (x-user-email, x-user-name, x-email-verified)
     so they can be forwarded to backend services.
     This endpoint is only called by Envoy after JWT validation.
-
-    Request Headers:
-        authorization: Bearer <jwt-token> (validated by Envoy)
-        x-request-id: <uuid> (optional, for request tracing)
-        x-user-email: user@example.com (from JWT, optional)
-        x-user-name: username (from JWT, optional)
-        x-email-verified: true/false (from JWT, optional)
-
-    Response Headers (200 OK, HTTP/2 lowercase):
-        x-user-email: user@example.com (passed through from JWT)
-        x-user-roles: user,customer-manager (comma-separated, NO spaces or whitespace)
-        x-user-name: username (passed through from JWT)
-        x-email-verified: true/false (passed through from JWT)
-
-    Note: Role names must contain only printable characters (no whitespace).
-          Multiple roles are returned as a comma-separated list with NO spaces
-          between role names (e.g., "user,customer-manager" not "user, customer-manager").
-          Data access layer handles caching transparently.
-
-    Args:
-        path: Optional path suffix from original request (e.g., "customers", "products")
-              This is ignored but logged for debugging.
-
-    Returns:
-        200 OK: User found, roles returned in headers
-        500 Internal Server Error: Service error
     """
     # Extract request ID for logging correlation
     request_id = request.headers.get("x-request-id", "unknown")
@@ -265,57 +285,13 @@ async def get_user_roles_endpoint(request: Request, path: Optional[str] = None):
         logger.info(f"[{request_id}] AuthZ role lookup request ({request.method}) received")
 
     try:
-        # Extract JWT-derived headers to pass through to backend
-        jwt_email = request.headers.get("x-user-email", "")
-        jwt_name = request.headers.get("x-user-name", "")
-        jwt_email_verified = request.headers.get("x-email-verified", "")
-        
-        # Extract email from request (returns None if no valid JWT)
-        email = extract_email_from_authorization_header(request, request_id)
+        response_headers, roles, email = resolve_user_and_roles(request, request_id)
 
-        # Build response headers (always include JWT-derived headers for passthrough)
-        response_headers = {
-            "x-user-email": jwt_email,
-            "x-user-name": jwt_name,
-            "x-email-verified": jwt_email_verified
-        }
+        # Build response using resolved headers and roles
+        response_headers["x-user-roles"] = ",".join(roles) if roles else "guest"
 
-        # If no valid JWT, return guest role
-        if not email:
-            logger.info(f"[{request_id}] Returning role 'guest'.")
-            response_headers["x-user-roles"] = "guest"
-            return Response(
-                status_code=200,
-                content="",
-                headers=response_headers
-            )
-
-        # Lookup roles for authenticated user (cache handled by data layer)
-        # Use email from Authorization header for role lookup (source of truth)
-        roles = lookup_user_roles(email, request_id)
-        
-        if not roles:
-            logger.info(f"[{request_id}] No roles found for {email}. Returning role 'unverified-user'.")
-            # Check if email is verified from JWT claim
-            if jwt_email_verified.lower() == "true":
-                response_headers["x-user-roles"] = "verified-user"
-                logger.info(f"[{request_id}] Email verified but no roles. Returning 'verified-user'.")
-            else:
-                response_headers["x-user-roles"] = "unverified-user"
-            return Response(
-                status_code=200,
-                content="",
-                headers=response_headers
-            )
-        
-        roles_str = ",".join(roles)
-        response_headers["x-user-roles"] = roles_str
-        logger.info(f"[{request_id}] Roles found for {email}: {roles}")
-        return Response(
-            status_code=200,
-            content="",
-            headers=response_headers
-        )
+        logger.info(f"[{request_id}] Roles resolved for {email or 'guest'}: {roles}")
+        return Response(status_code=200, content="", headers=response_headers)
     except Exception as e:
         logger.error(f"[{request_id}] Unexpected authorization error: {e}", exc_info=True)
         return Response(

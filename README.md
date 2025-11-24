@@ -25,7 +25,7 @@ Kubernetes Gateway API
 ├── api-gateway-poc Namespace
 │   ├── Gateway (api-gateway)
 │   │   ├── HTTP Listener :8080
-│   │   └── Auto-created Envoy Proxy
+│   │   └── Auto-created Envoy Proxy (data plane runs in `envoy-gateway-system`)
 │   │
 │   ├── HTTPRoutes
 │   │   ├── customer-route (/customers/*)
@@ -53,7 +53,7 @@ Kubernetes Gateway API
 - ✅ **Kubernetes Gateway API** for declarative routing
 - ✅ **Dynamic Configuration** without pod restarts
 - ✅ **Standard API** portable across gateway implementations
-- ✅ **90 Passing Tests** (unit + integration)
+- ✅ **Test suite:** unit + integration tests (see `tests/` for current count)
 
 ## 🚀 Quick Start
 
@@ -110,15 +110,17 @@ cd scripts\powershell
 - **API Gateway:** http://localhost:8080
 - **Keycloak Admin:** http://localhost:8080/auth (admin/admin)
 
-### Test API
+### Test API (development example using `test-client`)
+
+> Use the public `test-client` for quick local testing. For CI/automation prefer a confidential client with a secret or a service account flow.
 
 ```bash
-# Get token
-TOKEN=$(curl -X POST http://localhost:8080/auth/realms/api-gateway-poc/protocol/openid-connect/token \
-  -d "client_id=customer-client" \
-  -d "client_secret=customer-secret-key" \
-  -d "username=alice@example.com" \
-  -d "password=alice123" \
+# Get token (development public client)
+TOKEN=$(curl -s -X POST "http://localhost:8080/auth/realms/api-gateway-poc/protocol/openid-connect/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=test-client" \
+  -d "username=testuser" \
+  -d "password=testpass" \
   -d "grant_type=password" | jq -r '.access_token')
 
 # Test protected endpoint
@@ -154,8 +156,7 @@ EnvoyK8SPOC/
 │       ├── 05-httproute-auth-me.yaml
 │       ├── 06-httproute-keycloak.yaml
 │       ├── 07-securitypolicy-jwt.yaml
-│       ├── 08-securitypolicy-extauth.yaml
-│       └── README.md
+│       └── 08-securitypolicy-extauth.yaml
 │
 ├── scripts/                       # Deployment automation
 │   ├── bash/                      # Linux/Mac/WSL scripts
@@ -173,7 +174,7 @@ EnvoyK8SPOC/
 │       ├── verify-deployment.ps1
 │       └── test-endpoints.ps1
 │
-├── tests/                         # Test suite (90 tests)
+├── tests/                         # Test suite (100+ tests)
 │   ├── unit/                      # Unit tests
 │   └── integration/               # Integration tests
 │
@@ -183,7 +184,7 @@ EnvoyK8SPOC/
 │   └── troubleshooting.md
 │
 ├── docker-compose.yml             # Phase 1 reference
-├── project-plan.md                # Complete project roadmap
+├── project-plan.md                # Full project roadmap
 └── README.md                      # This file
 ```
 
@@ -194,6 +195,9 @@ EnvoyK8SPOC/
 - **[Project Plan](project-plan.md)** - Full project roadmap and learning objectives
 - **[Gateway API Resources](kubernetes/08-gateway-api/README.md)** - Gateway API resource reference
 - **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
+- **[Port mappings](docs/port-mappings.md)** - Cluster and docker-compose port mappings
+
+> Note: SecurityPolicy filenames and Gateways can change as the CRD/layout evolves — check `kubernetes/08-gateway-api/` for current filenames and exact resource names.
 
 ## 🔄 Phase Evolution
 
@@ -225,8 +229,6 @@ EnvoyK8SPOC/
 cd tests
 pytest -v
 ```
-
-Expected: 90 tests passing
 
 ### Test Categories
 
