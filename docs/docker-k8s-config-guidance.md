@@ -81,19 +81,7 @@ Quick reference commands
 
 Testing and token examples
 
-- Keycloak token endpoint examples (use whichever host your environment exposes Keycloak on):
-
-Local Keycloak (direct, Phase 2):
-```bash
-curl -X POST http://localhost:8180/realms/api-gateway-poc/protocol/openid-connect/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_id=test-client" \
-  -d "username=testuser" \
-  -d "password=testpass" \
-  -d "grant_type=password" | jq -r '.access_token'
-```
-
-Keycloak behind Gateway (Phase 3) — admin path `/auth` exposed by Gateway:
+- Keycloak token endpoint example (Gateway API deployment):
 ```bash
 curl -X POST http://localhost:8080/auth/realms/api-gateway-poc/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
@@ -105,15 +93,12 @@ curl -X POST http://localhost:8080/auth/realms/api-gateway-poc/protocol/openid-c
 
 - For CI/automation prefer the confidential client (with client secret) or a service account flow; do not embed dev client secrets in public pipelines.
 
-Phase 2 vs Phase 3 notes (short)
+Phase 3 (Gateway API) notes (short)
 
-- Phase 2 (direct Envoy): static Envoy config in a ConfigMap. Envoy runs as a Deployment in `api-gateway-poc` and listens on port 8080. JWT and ext_authz filters are configured directly in `envoy.yaml`.
-
-- Phase 3 (Gateway API): use Gateway API CRDs and Envoy Gateway controller. Security is declared using `SecurityPolicy` resources. Envoy proxy runs in `envoy-gateway-system` but is logically owned by the Gateway resource in `api-gateway-poc`.
+- Phase 3 (Gateway API): use Gateway API CRDs and Envoy Gateway controller. Security is declared using `SecurityPolicy` resources. Envoy proxy pods run in `envoy-gateway-system` and are logically owned by the Gateway resource in `api-gateway-poc`.
 
 Behavioral differences to keep in mind:
-- JWT enforcement and extAuth behavior are controlled by `SecurityPolicy` in Phase 3; you can make JWT required or optional per route. To support a guest `/auth/me` endpoint, configure the route with `jwt.optional: true` (or an extAuth-only SecurityPolicy) so extAuth can return `guest` when no token is present.
-- In Phase 2 you must edit `envoy.yaml` to achieve the same effects and redeploy the Envoy Deployment.
+- JWT enforcement and extAuth behavior are controlled by `SecurityPolicy` in Phase 3; you can make JWT required or optional per route. To support a guest `/auth/me` endpoint, configure the route or security policy to allow optional JWT so extAuth can return `guest` when no token is present.
 
 CI smoke-check recommendation
 
@@ -128,4 +113,4 @@ Further reading
 - Dockerfile best practices
 - External secrets project and SealedSecrets
 
-Generated for EnvoyK8SPOC Phase 2 and Phase 3. Keep this guidance concise and revisit when moving to production.
+Generated for EnvoyK8SPOC Phase 3. Phase 2 (direct Envoy) has been archived — see `docs/archive/` for legacy reference. Keep this guidance concise and revisit when moving to production.

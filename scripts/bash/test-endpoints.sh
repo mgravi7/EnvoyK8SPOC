@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test EnvoyK8SPOC service endpoints
+# Test EnvoyK8SPOC service endpoints (Phase 3 only)
 # Verifies services are responding correctly
 
 set -e
@@ -8,23 +8,10 @@ echo "================================"
 echo "Testing Service Endpoints"
 echo "================================"
 
-# Detect which phase is deployed
-PHASE2_ENVOY=$(kubectl get deployment envoy -n api-gateway-poc --ignore-not-found=true 2>/dev/null)
-PHASE3_GATEWAY=$(kubectl get gateway -n api-gateway-poc --ignore-not-found=true 2>/dev/null)
-
-if [ -n "$PHASE3_GATEWAY" ]; then
-    DEPLOYMENT_PHASE="Phase 3 (Gateway API)"
-    GATEWAY_PORT=8080
-    ENVOY_ADMIN_AVAILABLE=false
-elif [ -n "$PHASE2_ENVOY" ]; then
-    DEPLOYMENT_PHASE="Phase 2 (Direct Envoy)"
-    GATEWAY_PORT=8080
-    ENVOY_ADMIN_AVAILABLE=true
-else
-    DEPLOYMENT_PHASE="Unknown (no gateway detected)"
-    echo "ERROR: No gateway deployment detected!"
-    exit 1
-fi
+# Assume Phase 3 deployment
+DEPLOYMENT_PHASE="Phase 3 (Gateway API)"
+GATEWAY_PORT=8080
+ENVOY_ADMIN_AVAILABLE=false
 
 echo "Detected: $DEPLOYMENT_PHASE"
 
@@ -54,34 +41,19 @@ sleep 5
 
 echo ""
 echo "Getting LoadBalancer IPs..."
-if [ -n "$PHASE2_ENVOY" ]; then
-    kubectl get svc -n api-gateway-poc envoy keycloak
-else
-    # Phase 3 - Gateway creates its own service in envoy-gateway-system
-    echo "Keycloak service:"
-    kubectl get svc keycloak -n api-gateway-poc
-    echo ""
-    echo "Gateway service (in envoy-gateway-system):"
-    kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway 2>/dev/null || {
-        echo "Note: Gateway service details not available via label selector"
-        echo "Gateway is accessible at http://localhost:$GATEWAY_PORT"
-    }
-fi
+# Gateway service is in envoy-gateway-system namespace
+kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway || true
 
 echo ""
 echo "================================"
 echo "Testing Health Endpoints"
 echo "================================"
 
-# Test Envoy admin (Phase 2 only)
-if [ "$ENVOY_ADMIN_AVAILABLE" = true ]; then
-    test_endpoint "http://localhost:9901/ready" "Envoy Admin - Ready (Phase 2)"
-else
-    echo ""
-    echo "Envoy Admin endpoint not available in Phase 3 (managed by Envoy Gateway)"
-fi
+# Envoy admin not available in Phase 3
+echo ""
+echo "Envoy Admin endpoint not available in Phase 3 (managed by Envoy Gateway)"
 
-# Test Keycloak health
+# Test Keycloak health (management port may vary)
 test_endpoint "http://localhost:9000/health/ready" "Keycloak Health (Management Port)"
 
 echo ""
@@ -102,7 +74,6 @@ echo "================================"
 echo "Testing Keycloak Token Endpoint"
 echo "================================"
 
-# Get token from Keycloak
 echo ""
 echo "Attempting to get JWT token from Keycloak..."
 TOKEN_RESPONSE=$(curl -s -X POST "http://localhost:8180/realms/api-gateway-poc/protocol/openid-connect/token" \

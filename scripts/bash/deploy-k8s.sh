@@ -1,11 +1,11 @@
 #!/bin/bash
-# Deploy EnvoyK8SPOC Phase 3 to Kubernetes using Gateway API
-# This script deploys backend services + Gateway API resources (NOT Phase 2 Envoy)
+# Deploy EnvoyK8SPOC to Kubernetes using Gateway API (Phase 3 only)
+# This script deploys backend services + Gateway API resources
 
 set -e
 
 echo "================================"
-echo "Deploying EnvoyK8SPOC Phase 3"
+echo "Deploying EnvoyK8SPOC (Gateway API)"
 echo "================================"
 
 # Get script directory
@@ -33,18 +33,13 @@ wait_for_gateway() {
   local timeout=${3:-300}
   
   echo "Waiting for gateway/$gateway to be ready..."
-  # Gateway readiness check
   timeout_end=$((SECONDS + timeout))
   while [ $SECONDS -lt $timeout_end ]; do
-    # NOTE: JSONPath expression uses double quotes inside and single quotes outside to
-    # avoid shell interpolation issues in `bash`. Do not change the quoting here unless
-    # you understand shell quoting rules.
     status=$(kubectl get gateway $gateway -n $namespace -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' 2>/dev/null || echo "Unknown")
     if [ "$status" = "True" ]; then
       echo "Gateway $gateway is ready!"
       return 0
     fi
-    # Also check envoy proxy pod readiness in envoy-gateway-system
     proxy_ready=$(kubectl get pods -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=$gateway" -o jsonpath='{.items[*].status.containerStatuses[*].ready}' 2>/dev/null || echo "")
     if [[ "$proxy_ready" =~ "true" ]]; then
       echo "Envoy proxy pod for $gateway is ready!"
@@ -70,13 +65,11 @@ wait_for_service_endpoints() {
   attempt=0
   while [ $SECONDS -lt $timeout_end ]; do
     attempt=$((attempt+1))
-    # Try EndpointSlices first
     ips=$(kubectl get endpointslices -n $namespace -l "kubernetes.io/service-name=$service" -o jsonpath='{.items[*].endpoints[*].addresses[*]}' 2>/dev/null || echo "")
     if [ -z "$ips" ]; then
-      # Fallback to legacy Endpoints
       ips=$(kubectl get endpoints $service -n $namespace -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || echo "")
     fi
-    ips=$(echo "$ips" | xargs) # trim
+    ips=$(echo "$ips" | xargs)
     echo "Attempt:$attempt, endpoints='$ips'"
     if [[ "$ips" =~ [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ ]]; then
       echo "Service $service has endpoints: $ips"
@@ -85,7 +78,7 @@ wait_for_service_endpoints() {
     sleep 5
   done
   echo "Warning: Service $service did not have endpoints within ${timeout}s"
-  echo "Diagnostics: endpoints and endpointSlices" 
+  echo "Diagnostics: endpoints and endpointSlices"
   kubectl get endpoints $service -n $namespace -o yaml || true
   kubectl get endpointslices -n $namespace -l "kubernetes.io/service-name=$service" -o yaml || true
   kubectl describe pod -l app=keycloak -n $namespace || true
@@ -104,11 +97,10 @@ if ! kubectl get namespace envoy-gateway-system &>/dev/null; then
   echo ""
   echo "ERROR: Envoy Gateway is not installed!"
   echo ""
-  echo "Please install Envoy Gateway first:"
-  echo "  kubectl apply -f https://github.com/envoyproxy/gateway/releases/download/v1.2.0/install.yaml"
+  echo "Please install Envoy Gateway first (Helm recommended):"
+  echo "  helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm --version v1.6.0 --create-namespace --namespace envoy-gateway-system"
   echo "  kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available"
   echo ""
-  echo "Or refer to: kubernetes/08-gateway-api/00-install-envoy-gateway.yaml"
   exit 1
 fi
 
@@ -118,25 +110,6 @@ if ! kubectl wait --timeout=10s -n envoy-gateway-system deployment/envoy-gateway
 fi
 
 echo "✓ Envoy Gateway is installed"
-
-# Check if Phase 2 Envoy is running (warn if present)
-if kubectl get deployment envoy -n api-gateway-poc &>/dev/null; then
-  echo ""
-  echo "WARNING: Phase 2 Envoy deployment is still running!"
-  echo "Phase 3 and Phase 2 cannot run simultaneously (port conflicts)."
-  echo ""
-  read -p "Do you want to delete Phase 2 Envoy resources? (y/N) " -n 1 -r
-  echo
-  if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "Deleting Phase 2 Envoy resources..."
-    kubectl delete -f "$K8S_DIR/07-envoy-gateway/" --ignore-not-found=true
-    echo "Phase 2 Envoy resources deleted."
-  else
-    echo "Please manually delete Phase 2 Envoy before proceeding:"
-    echo "  kubectl delete -f kubernetes/07-envoy-gateway/"
-    exit 1
-  fi
-fi
 
 echo ""
 echo "=========================================="
@@ -212,8 +185,6 @@ echo "Applying Security Policies..."
 kubectl apply -f "$K8S_DIR/08-gateway-api/07-securitypolicy-jwt.yaml"
 # Apply extAuth policy for public routes so backends receive x-user-roles (no JWT required)
 kubectl apply -f "$K8S_DIR/08-gateway-api/09-securitypolicy-extauth-noJWT-routes.yaml"
-# The old external-authorization file has been merged into the combined SecurityPolicy. Do not apply 08-securitypolicy-extauth.yaml
-# kubectl apply -f "$K8S_DIR/08-gateway-api/08-securitypolicy-extauth.yaml"
 
 echo ""
 echo "================================"
@@ -240,7 +211,7 @@ kubectl get svc -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=
 
 echo ""
 echo "================================"
-echo "Next Steps:"
+echo "Next Steps:" 
 echo "================================"
 echo "1. Wait for LoadBalancer IP to be assigned (may take a minute)"
 echo "2. Run: ./verify-deployment.sh to check all components"
@@ -253,4 +224,4 @@ echo "5. Check Gateway status:"
 echo "   kubectl describe gateway api-gateway -n api-gateway-poc"
 echo ""
 echo "6. View Envoy proxy logs:"
-echo "   kubectl logs -n api-gateway-poc -l gateway.envoyproxy.io/owning-gateway-name=api-gateway"
+echo "   kubectl logs -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway"
