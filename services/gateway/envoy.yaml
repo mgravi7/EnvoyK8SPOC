@@ -40,6 +40,13 @@ static_resources:
                     cache_duration:
                       seconds: 300
                   forward: true
+                  claim_to_headers:
+                  - claim_name: email
+                    header_name: x-user-email
+                  - claim_name: preferred_username
+                    header_name: x-user-name
+                  - claim_name: email_verified
+                    header_name: x-email-verified
                   from_headers:
                   - name: Authorization
                     value_prefix: "Bearer "
@@ -53,13 +60,7 @@ static_resources:
                 requires:
                   provider_name: keycloak_provider
 
-              # Require JWT for /auth/me endpoint (user info for React UI)
-              - match:
-                  prefix: /auth/me
-                requires:
-                  provider_name: keycloak_provider
-
-              # JWT token not required for product service routes
+              # JWT token not required for /auth/me and product service routes
           
           # External Authorization Filter - Role Lookup
           - name: envoy.filters.http.ext_authz
@@ -77,11 +78,16 @@ static_resources:
                     - exact: authorization
                     - exact: x-request-id
                     - exact: ":path"
+                    - exact: x-email-verified
+                    - exact: x-user-email
+                    - exact: x-user-name
                 authorization_response:
                   allowed_upstream_headers:
                     patterns:
                     - exact: x-user-email
                     - exact: x-user-roles
+                    - exact: x-user-name
+                    - exact: x-email-verified
               failure_mode_allow: false
           
           # Router filter (must be last)

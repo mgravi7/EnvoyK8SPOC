@@ -10,10 +10,10 @@ Common issues and solutions for EnvoyK8SPOC Kubernetes deployment.
 - [Performance Issues](#performance-issues)
 - [Debugging Commands](#debugging-commands)
 
-> Note on Phase 2 vs Phase 3
+> Note on Gateway API (Phase 3)
 >
-> - Phase 2 (direct Envoy): Envoy runs in the `api-gateway-poc` namespace as the `envoy` Deployment. Many debug commands reference `-n api-gateway-poc` and `deployment/envoy`.
-> - Phase 3 (Gateway API): Envoy proxy pods are created by the Envoy Gateway controller and run in the `envoy-gateway-system` namespace. To find the proxy pods use the owning-gateway label: `-l gateway.envoyproxy.io/owning-gateway-name=api-gateway` and adjust `-n envoy-gateway-system` for commands that access Envoy or controller resources.
+> - This repository uses the Kubernetes Gateway API with Envoy Gateway (Phase 3). The Envoy Gateway controller creates and manages the Envoy data‑plane pods and Services in the `envoy-gateway-system` namespace. To find proxy pods and services created for the Gateway `api-gateway`, use the label selector `-l gateway.envoyproxy.io/owning-gateway-name=api-gateway` and inspect the `envoy-gateway-system` namespace.
+> - Historical Phase 2 (direct Envoy) notes have been archived in `docs/archive/` for reference if you need information about a manual Envoy Deployment and static `envoy.yaml`.
 
 ## Pod Issues
 
@@ -100,11 +100,11 @@ docker images | grep envoy
 cd scripts/bash
 ./build-images.sh
 
-# Check deployment image name
-kubectl get deployment envoy -n api-gateway-poc -o yaml | grep image:
+# Check generated proxy Deployment (data plane is created by Gateway controller)
+kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
 
-# Verify imagePullPolicy is IfNotPresent
-kubectl get deployment envoy -n api-gateway-poc -o yaml | grep imagePullPolicy
+# Inspect image referenced by the generated proxy pod
+kubectl get pod -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway -o jsonpath='{.items[0].spec.containers[0].image}'
 ```
 
 ### Pods Not Ready (Readiness Probe Failing)
@@ -184,12 +184,14 @@ envoy     LoadBalancer   <pending>     8080:30123/TCP
 **Solutions:**
 ```bash
 # Wait a minute (Docker Desktop assigns localhost automatically)
-kubectl get svc -n api-gateway-poc
+kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
 
 # Restart Docker Desktop
 
 # Use NodePort or port-forward as alternative
-kubectl port-forward -n api-gateway-poc svc/envoy 8080:8080
+# Find the Gateway service name created in envoy-gateway-system then port-forward it to localhost
+kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
+kubectl port-forward -n envoy-gateway-system svc/<gateway-service-name> 8080:8080
 
 # Check Docker Desktop is running Kubernetes
 kubectl cluster-info
@@ -210,11 +212,11 @@ curl: (7) Failed to connect to localhost port 8080: Connection refused
 
 **Solutions:**
 ```bash
-# Check if LoadBalancer IP is assigned
-kubectl get svc envoy -n api-gateway-poc
+# Check if LoadBalancer IP is assigned (Gateway-created service in envoy-gateway-system)
+kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
 
-# Check if pods are running
-kubectl get pods -n api-gateway-poc | grep envoy
+# Check if proxy pods are running
+kubectl get pods -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=api-gateway
 
 # Check if port is in use
 # Windows
@@ -223,7 +225,7 @@ netstat -ano | findstr :8080
 lsof -i :8080
 
 # Try port-forward
-kubectl port-forward -n api-gateway-poc svc/envoy 8080:8080
+kubectl port-forward -n envoy-gateway-system svc/<gateway-service-name> 8080:8080
 curl http://localhost:8080/products
 ```
 

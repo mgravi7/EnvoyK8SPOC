@@ -1,6 +1,6 @@
 # System Architecture Overview
 
-This document provides a high-level view of the API Gateway POC system architecture, showing the major components, their relationships, and key technical details.
+This document provides a high-level view of the API Gateway POC system architecture, showing the major components, their relationships, and key technical details. The canonical Kubernetes deployment uses the Gateway API with the Envoy Gateway operator (control plane in `envoy-gateway-system`, data plane proxies managed by the operator).
 
 ## Architecture Diagram (High Level)
 
@@ -45,7 +45,7 @@ graph TB
     
     %% API Gateway Layer
     subgraph "**API Gateway Layer**"
-        Envoy[**Envoy** Proxy - API Gateway - Port 8080 API - Port 9901 Admin - JWT Validation & Routing - External Authorization]
+        Envoy[**Envoy** Proxy - API Gateway - Port 8080 API - Admin managed by operator - JWT Validation & Routing - External Authorization]
     end
     
     %% Authentication & Authorization Layer
@@ -81,8 +81,8 @@ graph TB
     end
     
     %% Network
-    subgraph "**Container Network**"
-        Network[**Docker Bridge Network** - microservices-network - Internal Service Discovery]
+    subgraph "**Cluster Network**"
+        Network[**Kubernetes Cluster Network** - Service DNS & discovery]
     end
     
     %% Data Flow Connections
@@ -123,9 +123,9 @@ graph TB
     Redis -.-> Network
     Keycloak -.-> Network
     
-    %% Admin Access
+    %% Admin Access (Phase 3 notes)
     User -.->|Admin Console Port 8180| Keycloak
-    User -.->|Envoy Admin Port 9901| Envoy
+    User -.->|Envoy Admin access - managed in `envoy-gateway-system` (use kubectl port-forward or check operator-created service)| Envoy
     User -.->|Service Docs Port 8001/docs| CustomerAPI
     User -.->|Service Docs Port 8002/docs| ProductAPI
     User -.->|Service Docs Port 9000/docs| AuthZService
@@ -156,7 +156,7 @@ graph TB
 - **Purpose**: Single entry point for all API requests
 - **Ports**: 
   - `8080` - Main API endpoint (public)
-  - `9901` - Admin interface (internal)
+  - `Admin access managed by operator` - Access via `envoy-gateway-system` namespace (use `kubectl port-forward` or check operator-created service)
 - **Responsibilities**:
   - JWT token validation via Keycloak JWKS
   - Request routing to appropriate microservices
@@ -235,23 +235,37 @@ graph TB
 
 ## Network Architecture
 
-### Container Network
-- **Name**: `microservices-network`
-- **Type**: Docker Bridge Network
+### Cluster Network
+- **Type**: Kubernetes cluster network (service DNS & discovery)
 - **Purpose**: Internal service-to-service communication
-- **DNS**: Automatic service discovery by container name
+- **DNS**: Automatic service discovery by service name and namespace
 
 ### Port Mapping
 
-| Service | Internal Port | External Port | Purpose |
-|---------|---------------|---------------|---------|
-| Envoy Gateway | 8080 | 8080 | Main API |
-| Envoy Admin | 9901 | 9901 | Admin Interface |
-| Keycloak | 8080 | 8180 | Identity Provider |
-| Authorization Service | 9000 | 9000 | Role Lookup & ext_authz |
-| Redis Cache | 6379 | 6379 | Role Caching |
-| Customer Service | 8000 | 8001 | Customer API |
-| Product Service | 8000 | 8002 | Product API |
+Below are the port mappings shown in two contexts: Docker Compose (local host mappings for development) and Kubernetes (service/container ports and service types).
+
+#### Docker Compose (host mappings)
+
+| Service | Host Port → Container Port | Purpose |
+|---------|-----------------------------|---------|
+| Envoy (gateway) | 8080 → 8080 | Main API |
+| Keycloak | 8180 → 8080 | Identity Provider |
+| Keycloak (management) | 9000 → 9000 | Health/management |
+| Authorization Service | 9000 → 9000 | Role Lookup & ext_authz |
+| Redis | 6379 → 6379 | Role Caching |
+| Customer Service | 8001 → 8000 | Customer API |
+| Product Service | 8002 → 8000 | Product API |
+
+#### Kubernetes (service / container ports)
+
+| Service (namespace) | Service Type | Service Port → TargetPort | Notes |
+|---------------------|--------------|---------------------------:|-------|
+| envoy (envoy-gateway-system) | LoadBalancer (created by operator) | 8080 → 8080 | Envoy data plane managed by Envoy Gateway operator; service appears in `envoy-gateway-system` |
+| keycloak (api-gateway-poc) | LoadBalancer | 8180 → 8080, 9000 → 9000 | Docker Desktop maps LoadBalancer to localhost for local testing |
+| authz-service (api-gateway-poc) | ClusterIP | 9000 → 9000 | Internal only; called by Envoy via cluster DNS |
+| redis (api-gateway-poc) | ClusterIP | 6379 → 6379 | Internal only |
+| customer-service (api-gateway-poc) | ClusterIP | 8000 → 8000 | Internal only; HTTPRoute targets this service |
+| product-service (api-gateway-poc) | ClusterIP | 8000 → 8000 | Internal only; HTTPRoute targets this service |
 
 ## Security Architecture
 

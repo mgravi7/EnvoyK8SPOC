@@ -1,6 +1,6 @@
 # EnvoyK8SPOC Deployment Scripts
 
-This directory contains deployment automation scripts for EnvoyK8SPOC (Gateway API / Phase 3).
+This directory contains deployment automation scripts for EnvoyK8SPOC (Gateway API).
 
 ## Directory Structure
 
@@ -8,14 +8,14 @@ This directory contains deployment automation scripts for EnvoyK8SPOC (Gateway A
 scripts/
 +-- bash/                   # Linux/Mac/WSL scripts
 |   +-- build-images.sh
-|   +-- deploy-k8s.sh       # Deploys Phase 3 (Gateway API)
+|   +-- deploy-k8s.sh       # Deploys Gateway API
 |   +-- verify-deployment.sh
 |   +-- test-endpoints.sh
 |   +-- cleanup-k8s.sh
 |
 +-- powershell/             # Windows PowerShell scripts
     +-- build-images.ps1
-    +-- deploy-k8s.ps1      # Deploys Phase 3 (Gateway API)
+    +-- deploy-k8s.ps1      # Deploys Gateway API
     +-- verify-deployment.ps1
     +-- test-endpoints.ps1
     +-- cleanup-k8s.ps1
@@ -67,7 +67,7 @@ helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm --version v1.
 kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 ```
 
-### Step 3: Deploy to Kubernetes (Phase 3)
+### Step 3: Deploy to Kubernetes (Gateway API)
 
 **Bash:**
 ```bash
@@ -117,9 +117,9 @@ This deploys all resources in the correct order and waits for readiness.
 .\cleanup-k8s.ps1
 ```
 
-This removes Phase 3 resources (namespace, Gateway, HTTPRoutes, SecurityPolicies) but keeps the Envoy Gateway operator for reuse.
+This removes the deployed Gateway API resources (namespace, Gateway, HTTPRoutes, SecurityPolicies) but keeps the Envoy Gateway operator for reuse.
 
 ## Notes
-- This repository standardizes on the Kubernetes Gateway API (Phase 3). The legacy Phase 2 direct Envoy deployment manifests have been removed to reduce clutter. Keep `docker-compose.yml` for native Docker runs.
+- This repository standardizes on the Kubernetes Gateway API. Legacy direct-Envoy deployment manifests (if present) have been archived in `docs/archive/` for historical reference. Keep `docker-compose.yml` for native Docker runs.
 - Scripts assume Envoy Gateway operator v1.6.0+ is installed via Helm.
 - Run `pytest -q` in `tests/` to execute the full test suite.

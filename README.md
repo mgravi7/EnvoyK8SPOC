@@ -9,8 +9,8 @@ A learning project demonstrating the migration from Docker Compose to Kubernetes
 This project showcases a complete microservices architecture evolution across three phases:
 
 - **Phase 1 (Complete):** Docker Compose with Envoy Proxy, Keycloak, and RBAC ✅
-- **Phase 2 (Complete):** Kubernetes deployment with direct Envoy ✅
-- **Phase 3 (Ready):** Kubernetes Gateway API with Envoy Gateway 🚀
+- **Phase 2 (Archived):** Kubernetes deployment with direct Envoy (see `docs/archive/`)
+- **Phase 3 (Current):** Kubernetes Gateway API with Envoy Gateway 🚀
 
 ## 🏗️ Architecture
 
@@ -64,12 +64,13 @@ Kubernetes Gateway API
 - Python 3.12 (for tests)
 - Git
 
-### Phase 3 Deployment
+### Gateway API Deployment
 
 **1. Install Envoy Gateway (one-time):**
 
 ```bash
-kubectl apply -f https://github.com/envoyproxy/gateway/releases/download/v1.2.0/install.yaml
+# Helm (recommended)
+helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm --version v1.6.0 --create-namespace --namespace envoy-gateway-system
 kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 ```
 
@@ -85,14 +86,14 @@ cd scripts\powershell
 .\build-images.ps1
 ```
 
-**3. Deploy Phase 3:**
+**3. Deploy Gateway API:**
 
 ```bash
 # Linux/Mac/WSL
-./deploy-k8s-phase3.sh
+./deploy-k8s.sh
 
 # Windows PowerShell
-.\deploy-k8s-phase3.ps1
+.\deploy-k8s.ps1
 ```
 
 **4. Verify and test:**
@@ -136,7 +137,7 @@ EnvoyK8SPOC/
 │   ├── product-service/           # Product API
 │   ├── authz-service/             # External authz + RBAC
 │   ├── keycloak/                  # IAM (Keycloak + realm config)
-│   ├── gateway/                   # Envoy Dockerfile (Phase 2)
+│   ├── gateway/                   # Envoy config (for docker-compose)
 │   └── shared/                    # Common utilities
 │
 ├── kubernetes/                    # Kubernetes manifests
@@ -146,9 +147,9 @@ EnvoyK8SPOC/
 │   ├── 03-data/                   # Redis
 │   ├── 04-iam/                    # Keycloak
 │   ├── 05-authz/                  # Authorization service
+│   ├── 05-rate-limiting/          # Rate limiting (future)
 │   ├── 06-services/               # Backend services
-│   ├── 07-envoy-gateway/          # Phase 2: Direct Envoy
-│   └── 08-gateway-api/            # Phase 3: Gateway API ⭐
+│   └── 08-gateway-api/            # Gateway API resources ⭐
 │       ├── 01-gatewayclass.yaml
 │       ├── 02-gateway.yaml
 │       ├── 03-httproute-customer.yaml
@@ -156,20 +157,18 @@ EnvoyK8SPOC/
 │       ├── 05-httproute-auth-me.yaml
 │       ├── 06-httproute-keycloak.yaml
 │       ├── 07-securitypolicy-jwt.yaml
-│       └── 08-securitypolicy-extauth.yaml
+│       └── 09-securitypolicy-extauth-noJWT-routes.yaml
 │
 ├── scripts/                       # Deployment automation
 │   ├── bash/                      # Linux/Mac/WSL scripts
 │   │   ├── build-images.sh
-│   │   ├── deploy-k8s-phase2.sh
-│   │   ├── deploy-k8s-phase3.sh   # Phase 3 deployment ⭐
+│   │   ├── deploy-k8s.sh          # Gateway API deployment ⭐
 │   │   ├── cleanup-k8s.sh
 │   │   ├── verify-deployment.sh
 │   │   └── test-endpoints.sh
 │   └── powershell/                # Windows scripts
 │       ├── build-images.ps1
-│       ├── deploy-k8s-phase2.ps1
-│       ├── deploy-k8s-phase3.ps1  # Phase 3 deployment ⭐
+│       ├── deploy-k8s.ps1         # Gateway API deployment ⭐
 │       ├── cleanup-k8s.ps1
 │       ├── verify-deployment.ps1
 │       └── test-endpoints.ps1
@@ -179,9 +178,12 @@ EnvoyK8SPOC/
 │   └── integration/               # Integration tests
 │
 ├── docs/                          # Documentation
-│   ├── kubernetes-deployment.md   # Phase 2 & 3 deployment guide
-│   ├── gateway-api-migration.md   # Phase 3 migration guide ⭐
-│   └── troubleshooting.md
+│   ├── kubernetes-deployment.md   # Gateway API deployment guide
+│   ├── troubleshooting.md         # Common issues and solutions
+│   ├── port-mappings.md           # Port reference
+│   ├── docker-k8s-config-guidance.md
+│   ├── helm-installation-guide.md
+│   └── archive/                   # Legacy / archived phase notes
 │
 ├── docker-compose.yml             # Phase 1 reference
 ├── project-plan.md                # Full project roadmap
@@ -190,14 +192,13 @@ EnvoyK8SPOC/
 
 ## 📚 Documentation
 
-- **[Kubernetes Deployment Guide](docs/kubernetes-deployment.md)** - Complete deployment instructions for Phase 2 & 3
-- **[Gateway API Migration Guide](docs/gateway-api-migration.md)** - Phase 3 migration details
-- **[Project Plan](project-plan.md)** - Full project roadmap and learning objectives
-- **[Gateway API Resources](kubernetes/08-gateway-api/README.md)** - Gateway API resource reference
+- **[Kubernetes Deployment Guide](docs/kubernetes-deployment.md)** - Complete Gateway API deployment instructions
 - **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
 - **[Port mappings](docs/port-mappings.md)** - Cluster and docker-compose port mappings
+- **[Helm Installation Guide](docs/helm-installation-guide.md)** - Envoy Gateway Helm installation
+- **Historical notes (archived):** `docs/archive/` for legacy Phase 2 material
 
-> Note: SecurityPolicy filenames and Gateways can change as the CRD/layout evolves — check `kubernetes/08-gateway-api/` for current filenames and exact resource names.
+> Note: SecurityPolicy filenames can change as the CRD/layout evolves — check `kubernetes/08-gateway-api/` for current filenames.
 
 ## 🔄 Phase Evolution
 
@@ -207,14 +208,13 @@ EnvoyK8SPOC/
 - **Deployment:** `docker-compose up`
 - **Learning:** Microservices fundamentals, Envoy filters, JWT/RBAC
 
-### Phase 2: Kubernetes (Direct Envoy) ✅
-- **Status:** Complete
+### Phase 2: Kubernetes (Direct Envoy)
+- **Status:** Archived (see `docs/archive/`)
 - **Gateway:** Envoy Deployment with ConfigMap
-- **Deployment:** `kubectl apply` + manual Envoy management
 - **Learning:** Kubernetes basics, Services, Deployments, ConfigMaps
 
 ### Phase 3: Gateway API 🚀
-- **Status:** Ready for deployment
+- **Status:** Current deployment standard
 - **Gateway:** Kubernetes Gateway API + Envoy Gateway operator
 - **Deployment:** Gateway, HTTPRoute, SecurityPolicy CRDs
 - **Learning:** Gateway API, declarative config, dynamic updates
@@ -239,8 +239,7 @@ pytest -v
 
 - **Container Runtime:** Docker Desktop
 - **Orchestration:** Kubernetes (Docker Desktop built-in)
-- **Gateway (Phase 2):** Envoy Proxy v1.31
-- **Gateway (Phase 3):** Envoy Gateway v1.2 + Gateway API
+- **Gateway:** Envoy Gateway v1.6 + Gateway API
 - **Backend Services:** FastAPI (Python 3.12)
 - **Authentication:** Keycloak (OpenID Connect / OAuth 2.0)
 - **Authorization:** Custom authz-service with ext_authz
@@ -268,7 +267,7 @@ This project demonstrates:
    - Service discovery (DNS)
    - LoadBalancer services
 
-4. **Gateway API** (Phase 3)
+4. **Gateway API**
    - Declarative routing (HTTPRoute)
    - Security policies (JWT, ext_authz)
    - Dynamic configuration
@@ -294,13 +293,12 @@ This project demonstrates:
 
 ## 🚧 Roadmap
 
-### Phase 3 (Current Focus)
+### Phase 3 (Current - Complete)
 - ✅ Gateway API resource definitions
 - ✅ HTTPRoute configurations
 - ✅ SecurityPolicy for JWT + ext_authz
 - ✅ Deployment scripts (Bash + PowerShell)
 - ✅ Documentation
-- ⏳ Testing and validation (your review)
 
 ### Phase 4 (Future)
 - [ ] Rate limiting with RateLimitPolicy
@@ -333,7 +331,7 @@ This is a personal learning project. Use at your own discretion.
 
 ---
 
-**Phase 3 is ready for deployment! 🎉**
+**Gateway API deployment is ready! 🎉**
 
-See [docs/gateway-api-migration.md](docs/gateway-api-migration.md) for migration guide.
+Historical Phase 2 notes are kept in `docs/archive/` for reference.
 
