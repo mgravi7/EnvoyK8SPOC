@@ -54,4 +54,4 @@ docker images | grep -E "customer-service|product-service|authz-service|keycloak
 
 echo ""
 echo "Images are ready for Kubernetes deployment"
-echo "Run: ./deploy-k8s-phase2.sh to deploy to Kubernetes"
+echo "Run: ./deploy-k8s.sh to deploy to Kubernetes"

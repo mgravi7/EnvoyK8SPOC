@@ -60,8 +60,3 @@ spec:
       - x-user-name          # Username (from JWT preferred_username)
       - x-email-verified     # Email verification status (from JWT)
       - x-user-roles         # User roles (from authz-service database lookup)
-    # JWT-derived headers to send to authz-service
-    headersToExtAuth:
-    - x-user-email
-    - x-user-name
-    - x-email-verified
