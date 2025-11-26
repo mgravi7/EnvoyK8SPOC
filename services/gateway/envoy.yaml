@@ -61,6 +61,21 @@ static_resources:
                   provider_name: keycloak_provider
 
               # JWT token not required for /auth/me and product service routes
+              - match:
+                  prefix: /auth/me
+                requires:
+                  requires_any:
+                    requirements:
+                    - provider_name: keycloak_provider
+                    - allow_missing: {}
+
+              - match:
+                  prefix: /products
+                requires:
+                  requires_any:
+                    requirements:
+                    - provider_name: keycloak_provider
+                    - allow_missing: {}
           
           # External Authorization Filter - Role Lookup
           - name: envoy.filters.http.ext_authz
@@ -75,9 +90,7 @@ static_resources:
                 authorization_request:
                   allowed_headers:
                     patterns:
-                    - exact: authorization
                     - exact: x-request-id
-                    - exact: ":path"
                     - exact: x-email-verified
                     - exact: x-user-email
                     - exact: x-user-name

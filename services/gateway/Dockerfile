@@ -1,4 +1,5 @@
-FROM envoyproxy/envoy:v1.31-latest
+# Dcoumentation for Envoy APi: https://www.envoyproxy.io/docs/envoy/latest/api-v3/api
+FROM envoyproxy/envoy:v1.36.2
 
 # Copy the Envoy configuration
 COPY envoy.yaml /etc/envoy/envoy.yaml

@@ -53,4 +53,4 @@ docker images | Select-String -Pattern "customer-service|product-service|authz-s
 
 Write-Host ""
 Write-Host "Images are ready for Kubernetes deployment"
-Write-Host "Run: .\deploy-k8s-phase2.ps1 to deploy to Kubernetes"
+Write-Host "Run: .\deploy-k8s.ps1 to deploy to Kubernetes"
